@@ -2,9 +2,14 @@ name: Daily Shorts Automation
 
 on:
   schedule:
-    # Runs at 12:00 PM UTC every day. Change the cron timing as needed.
-    - cron: '0 12 * * *'
-  workflow_dispatch: # This line gives you a manual "Run Workflow" button on GitHub to test it
+    # Runs at 12am, 6am, 12pm, and 6pm UTC
+    - cron: '0 0,6,12,18 * * *'
+  workflow_dispatch: 
+    inputs:
+      custom_idea:
+        description: 'Custom idea for the video (leave blank for fully automated)'
+        required: false
+        type: string
 
 jobs:
   run-bot:
@@ -19,17 +24,16 @@ jobs:
         with:
           python-version: '3.12'
 
-      - name: Install System Dependencies (ImageMagick)
+      - name: Install System Dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y imagemagick
-          # Fix ImageMagick security policy to allow text rendering
+          sudo apt-get install -y imagemagick ffmpeg
           sudo sed -i 's/none/read,write/g' /etc/ImageMagick-6/policy.xml
 
       - name: Install Python Dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install google-genai requests moviepy edge-tts google-api-python-client google-auth-httplib2 google-auth-oauthlib
+          pip install google-genai requests moviepy edge-tts google-api-python-client google-auth-httplib2 google-auth-oauthlib yt-dlp
 
       - name: Reconstruct Secure Credentials
         run: |
@@ -40,4 +44,5 @@ jobs:
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           PEXELS_API_KEY: ${{ secrets.PEXELS_API_KEY }}
+          CUSTOM_IDEA: ${{ github.event.inputs.custom_idea }}
         run: python main.py
