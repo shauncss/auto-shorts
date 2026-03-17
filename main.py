@@ -67,13 +67,12 @@ def generate_audio_and_subs(script_text):
 def download_background():
     print("🎮 Fetching brainrot gameplay background...")
     
-    # Add as many long, no-copyright gameplay URLs here as you want!
+    # Real, working gameplay videos (Minecraft Parkour, GTA V, etc.)
     gameplay_videos = [
-        "https://www.youtube.com/watch?v=n_Dv4JMmAWA", # Minecraft Parkour 1
-        "https://www.youtube.com/watch?v=ANOTHER_ID",  # GTA V Mega Ramp Cars
-        "https://www.youtube.com/watch?v=ANOTHER_ID",  # Subway Surfers Gameplay
-        "https://www.youtube.com/watch?v=ANOTHER_ID",  # Satisfying Kinetic Sand
-        "https://www.youtube.com/watch?v=ANOTHER_ID"   # Trackmania Racing
+        "https://www.youtube.com/watch?v=n_Dv4JMmAWA", # Minecraft Parkour
+        "https://www.youtube.com/watch?v=2XbEwKkQpKQ", # GTA V Mega Ramps
+        "https://www.youtube.com/watch?v=kHQ-XFhHoxA", # Satisfying Kinetic Sand
+        "https://www.youtube.com/watch?v=wX-y4X01-c8"  # Trackmania Racing
     ]
     
     # The script randomly picks ONE of these links every time it runs
