@@ -68,10 +68,7 @@ def download_background():
     print("🎮 Fetching brainrot gameplay background...")
     
     gameplay_videos = [
-        "https://www.youtube.com/watch?v=n_Dv4JMmAWA", # Minecraft Parkour
-        "https://www.youtube.com/watch?v=2XbEwKkQpKQ", # GTA V Mega Ramps
-        "https://www.youtube.com/watch?v=kHQ-XFhHoxA", # Satisfying Kinetic Sand
-        "https://www.youtube.com/watch?v=wX-y4X01-c8"  # Trackmania Racing
+        "https://www.youtube.com/watch?v=u7kdVe8q5zs", # Minecraft Parkour
     ]
     
     # Shuffle the list so it tries them in a random order
