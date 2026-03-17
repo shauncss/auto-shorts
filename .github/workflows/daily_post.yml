@@ -29,7 +29,7 @@ jobs:
           DEBIAN_FRONTEND: noninteractive
         run: |
           sudo apt-get update
-          sudo apt-get install -yq tzdata imagemagick ffmpeg
+          sudo apt-get install -y --no-install-recommends tzdata imagemagick ffmpeg
           sudo sed -i 's/none/read,write/g' /etc/ImageMagick-6/policy.xml
 
       - name: Install Python Dependencies
