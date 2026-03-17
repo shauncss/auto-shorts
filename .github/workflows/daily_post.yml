@@ -1,0 +1,43 @@
+name: Daily Shorts Automation
+
+on:
+  schedule:
+    # Runs at 12:00 PM UTC every day. Change the cron timing as needed.
+    - cron: '0 12 * * *'
+  workflow_dispatch: # This line gives you a manual "Run Workflow" button on GitHub to test it
+
+jobs:
+  run-bot:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install System Dependencies (ImageMagick)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y imagemagick
+          # Fix ImageMagick security policy to allow text rendering
+          sudo sed -i 's/none/read,write/g' /etc/ImageMagick-6/policy.xml
+
+      - name: Install Python Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install google-genai requests moviepy edge-tts google-api-python-client google-auth-httplib2 google-auth-oauthlib
+
+      - name: Reconstruct Secure Credentials
+        run: |
+          echo '${{ secrets.YOUTUBE_CLIENT_SECRETS }}' > client_secrets.json
+          echo '${{ secrets.YOUTUBE_TOKEN }}' > token.json
+
+      - name: Run Master Script
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          PEXELS_API_KEY: ${{ secrets.PEXELS_API_KEY }}
+        run: python main.py
