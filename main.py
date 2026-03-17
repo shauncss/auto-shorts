@@ -119,7 +119,9 @@ def edit_video():
     
     # Pick a random starting point in your local video
     # Ensures it doesn't pick a start time too close to the end
-    max_start_time = video.duration - audio.duration
+    safety_buffer = 15
+    max_start_time = video.duration - audio.duration - safety_buffer
+    
     if max_start_time > 0:
         random_start = random.uniform(0, max_start_time)
         video = video.subclipped(random_start, random_start + audio.duration)
