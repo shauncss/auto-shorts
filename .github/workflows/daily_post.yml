@@ -19,23 +19,26 @@ jobs:
 
     steps:
       - name: Checkout repository
-      - uses: actions/checkout@v4
+        uses: actions/checkout@v4
 
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.12'
 
+      - name: Install System Dependencies
+        env:
+          DEBIAN_FRONTEND: noninteractive
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends tzdata imagemagick ffmpeg nodejs
+          sudo sed -i 's/none/read,write/g' /etc/ImageMagick-6/policy.xml
+
       - name: Install Python Dependencies
         run: |
           python -m pip install --upgrade pip
           pip install google-genai requests moviepy edge-tts google-api-python-client google-auth-httplib2 google-auth-oauthlib 
           pip install -U --pre yt-dlp
-
-      - name: Install Python Dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install google-genai requests moviepy edge-tts google-api-python-client google-auth-httplib2 google-auth-oauthlib yt-dlp
 
       - name: Reconstruct Secure Credentials
         run: |
