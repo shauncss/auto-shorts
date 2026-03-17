@@ -67,7 +67,6 @@ def generate_audio_and_subs(script_text):
 def download_background():
     print("🎮 Fetching brainrot gameplay background...")
     
-    # Real, working gameplay videos (Minecraft Parkour, GTA V, etc.)
     gameplay_videos = [
         "https://www.youtube.com/watch?v=n_Dv4JMmAWA", # Minecraft Parkour
         "https://www.youtube.com/watch?v=2XbEwKkQpKQ", # GTA V Mega Ramps
@@ -75,20 +74,37 @@ def download_background():
         "https://www.youtube.com/watch?v=wX-y4X01-c8"  # Trackmania Racing
     ]
     
-    # The script randomly picks ONE of these links every time it runs
-    video_url = random.choice(gameplay_videos)
+    # Shuffle the list so it tries them in a random order
+    random.shuffle(gameplay_videos)
     
-    # It then picks a random 45-second chunk from somewhere in the middle
-    start_time = random.randint(60, 1200)
-    end_time = start_time + 45
+    for video_url in gameplay_videos:
+        try:
+            print(f"🔄 Attempting to download: {video_url}")
+            start_time = random.randint(60, 1200)
+            end_time = start_time + 45
 
-    subprocess.run([
-        "yt-dlp", 
-        "-f", "bestvideo[ext=mp4]", 
-        "--download-sections", f"*{start_time}-{end_time}", 
-        video_url, 
-        "-o", "background.mp4"
-    ])
+            # The --extractor-args flag helps bypass YouTube's bot detection
+            result = subprocess.run([
+                "yt-dlp", 
+                "--extractor-args", "youtube:player_client=web",
+                "-f", "bestvideo[ext=mp4]", 
+                "--download-sections", f"*{start_time}-{end_time}", 
+                video_url, 
+                "-o", "background.mp4"
+            ], capture_output=True, text=True)
+            
+            # Check if the download was actually successful
+            if result.returncode == 0 and os.path.exists("background.mp4"):
+                print("✅ Successfully downloaded background!")
+                return # Exit the loop, we got our video!
+            else:
+                print(f"⚠️ Blocked by YouTube. Trying the next link...")
+                
+        except Exception as e:
+            print(f"⚠️ Error with {video_url}: {e}")
+            
+    # If the script tries EVERY video and they all fail, it will raise this error
+    raise Exception("❌ All videos failed to download. YouTube is aggressively blocking the server.")
 
 # ==========================================
 # 5. DYNAMIC CAPTION PARSER
