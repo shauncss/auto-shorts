@@ -22,8 +22,6 @@ client = genai.Client(api_key=GEMINI_API_KEY)
 # ==========================================
 def generate_content():
     print("🧠 Generating script with Gemini...")
-    
-    # Check if you manually typed an idea in GitHub
     if CUSTOM_IDEA:
         topic_prompt = f"Write about this specific idea: {CUSTOM_IDEA}."
     else:
@@ -43,7 +41,6 @@ def generate_content():
         model='gemini-3-flash-preview',
         contents=prompt
     )
-    
     clean_text = response.text.replace('```json', '').replace('```', '').strip()
     return json.loads(clean_text)
 
@@ -52,7 +49,6 @@ def generate_content():
 # ==========================================
 def generate_audio_and_subs(script_text):
     print("🎙️ Generating voiceover and sync data...")
-    # This now generates an MP3 AND a WebVTT subtitle file
     subprocess.run([
         "edge-tts", 
         "--voice", "en-US-ChristopherNeural", 
@@ -62,56 +58,12 @@ def generate_audio_and_subs(script_text):
     ])
 
 # ==========================================
-# 4. THE VISUALS: BRAINROT GAMEPLAY
-# ==========================================
-def download_background():
-    print("🎮 Fetching brainrot gameplay background...")
-    
-    gameplay_videos = [
-        "https://www.youtube.com/watch?v=u7kdVe8q5zs", # Minecraft Parkour
-    ]
-    
-    # Shuffle the list so it tries them in a random order
-    random.shuffle(gameplay_videos)
-    
-    for video_url in gameplay_videos:
-        try:
-            print(f"🔄 Attempting to download: {video_url}")
-            start_time = random.randint(60, 1200)
-            end_time = start_time + 45
-
-            # The --extractor-args flag helps bypass YouTube's bot detection
-            result = subprocess.run([
-                "yt-dlp", 
-                "--force-ipv4",
-                "--extractor-args", "youtube:player_client=android,ios",
-                "-f", "bestvideo[ext=mp4]", 
-                "--download-sections", f"*{start_time}-{end_time}", 
-                video_url, 
-                "-o", "background.mp4"
-            ], capture_output=True, text=True)
-            
-            # Check if the download was actually successful
-            if result.returncode == 0 and os.path.exists("background.mp4"):
-                print("✅ Successfully downloaded background!")
-                return # Exit the loop, we got our video!
-            else:
-                print(f"⚠️ Blocked by YouTube. Trying the next link...")
-                
-        except Exception as e:
-            print(f"⚠️ Error with {video_url}: {e}")
-            
-    # If the script tries EVERY video and they all fail, it will raise this error
-    raise Exception("❌ All videos failed to download. YouTube is aggressively blocking the server.")
-
-# ==========================================
-# 5. DYNAMIC CAPTION PARSER
+# 4. DYNAMIC CAPTION PARSER
 # ==========================================
 def get_dynamic_captions(vtt_file, video_w):
     with open(vtt_file, 'r', encoding='utf-8') as f:
         content = f.read()
     
-    # Extract timestamps and text words
     pattern = re.compile(r"(\d{2}:\d{2}:\d{2}\.\d{3}) --> (\d{2}:\d{2}:\d{2}\.\d{3})\n(.*?)\n", re.DOTALL)
     matches = pattern.findall(content)
     
@@ -121,7 +73,7 @@ def get_dynamic_captions(vtt_file, video_w):
         return int(h)*3600 + int(m)*60 + int(s) + int(ms)/1000.0
 
     clips = []
-    chunk_size = 4 # Shows 4 words at a time
+    chunk_size = 4 
     
     for i in range(0, len(matches), chunk_size):
         chunk = matches[i:i+chunk_size]
@@ -133,28 +85,29 @@ def get_dynamic_captions(vtt_file, video_w):
         
         txt_clip = TextClip(
             text=text,
-            font_size=80, # Huge, readable font
+            font_size=80,
             color='white',
             font='Roboto-Bold.ttf',
             stroke_color='black',
             stroke_width=4,
             method='caption',
-            size=(video_w - 200, None) # Safe zone to prevent border clipping
+            size=(video_w - 200, None)
         ).with_position('center').with_start(start_t).with_duration(end_t - start_t)
         
         clips.append(txt_clip)
     return clips
 
 # ==========================================
-# 6. THE EDITOR: ASSEMBLE
+# 5. THE EDITOR: SLICE & ASSEMBLE
 # ==========================================
 def edit_video():
-    print("🎬 Assembling the final video...")
+    print("🎬 Slicing local gameplay and assembling video...")
     
-    video = VideoFileClip("background.mp4")
+    # Load the local brainrot file instead of downloading
+    video = VideoFileClip("brainrot.mp4")
     audio = AudioFileClip("voice.mp3")
     
-    # Crop the widescreen gameplay to 9:16 vertical
+    # Crop the widescreen gameplay to vertical 9:16
     target_w = video.h * (9/16)
     x_center = video.w / 2
     video = video.cropped(
@@ -164,15 +117,19 @@ def edit_video():
         y2=video.h
     )
     
-    # Loop if necessary, then trim to audio length
-    if video.duration < audio.duration:
-        from moviepy import concatenate_videoclips
-        loops = int(audio.duration // video.duration) + 1
-        video = concatenate_videoclips([video] * loops)
-        
-    video = video.subclipped(0, audio.duration).with_audio(audio)
+    # Pick a random starting point in your local video
+    # Ensures it doesn't pick a start time too close to the end
+    max_start_time = video.duration - audio.duration
+    if max_start_time > 0:
+        random_start = random.uniform(0, max_start_time)
+        video = video.subclipped(random_start, random_start + audio.duration)
+    else:
+        # If the audio is somehow longer than your whole video, just use the whole video
+        video = video.subclipped(0, video.duration)
+
+    video = video.with_audio(audio)
     
-    # Add the dynamic pop-up captions
+    # Add the captions
     caption_clips = get_dynamic_captions("subs.vtt", video.w)
     
     final_video = CompositeVideoClip([video] + caption_clips)
@@ -183,7 +140,7 @@ def edit_video():
     audio.close()
 
 # ==========================================
-# 7. THE PUBLISHER
+# 6. THE PUBLISHER
 # ==========================================
 def upload_to_youtube(title, description):
     print("🚀 Uploading to YouTube...")
@@ -218,14 +175,12 @@ if __name__ == "__main__":
     try:
         content = generate_content()
         generate_audio_and_subs(content["script"])
-        download_background()
-        edit_video()
+        edit_video() # Slices the local brainrot.mp4 automatically!
         upload_to_youtube(content["title"], content["description"])
         
         try:
             os.remove("voice.mp3")
             os.remove("subs.vtt")
-            os.remove("background.mp4")
         except PermissionError:
             pass
             
