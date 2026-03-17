@@ -14,23 +14,22 @@ on:
 jobs:
   run-bot:
     runs-on: ubuntu-latest
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
 
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.12'
 
-      - name: Install System Dependencies
-        env:
-          DEBIAN_FRONTEND: noninteractive
+      - name: Install Python Dependencies
         run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends tzdata imagemagick ffmpeg nodejs
-          sudo sed -i 's/none/read,write/g' /etc/ImageMagick-6/policy.xml
+          python -m pip install --upgrade pip
+          pip install google-genai requests moviepy edge-tts google-api-python-client google-auth-httplib2 google-auth-oauthlib 
+          pip install -U --pre yt-dlp
 
       - name: Install Python Dependencies
         run: |

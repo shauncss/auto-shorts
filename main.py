@@ -86,7 +86,8 @@ def download_background():
             # The --extractor-args flag helps bypass YouTube's bot detection
             result = subprocess.run([
                 "yt-dlp", 
-                "--extractor-args", "youtube:player_client=web",
+                "--force-ipv4",
+                "--extractor-args", "youtube:player_client=android,ios",
                 "-f", "bestvideo[ext=mp4]", 
                 "--download-sections", f"*{start_time}-{end_time}", 
                 video_url, 
