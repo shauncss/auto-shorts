@@ -66,15 +66,22 @@ def generate_audio_and_subs(script_text):
 # ==========================================
 def download_background():
     print("🎮 Fetching brainrot gameplay background...")
-    # Add any long, no-copyright gameplay URLs here (Minecraft, GTA, etc.)
+    
+    # Add as many long, no-copyright gameplay URLs here as you want!
     gameplay_videos = [
-        "https://www.youtube.com/watch?v=n_Dv4JMmAWA", # Example MC Parkour
+        "https://www.youtube.com/watch?v=n_Dv4JMmAWA", # Minecraft Parkour 1
+        "https://www.youtube.com/watch?v=ANOTHER_ID",  # GTA V Mega Ramp Cars
+        "https://www.youtube.com/watch?v=ANOTHER_ID",  # Subway Surfers Gameplay
+        "https://www.youtube.com/watch?v=ANOTHER_ID",  # Satisfying Kinetic Sand
+        "https://www.youtube.com/watch?v=ANOTHER_ID"   # Trackmania Racing
     ]
+    
+    # The script randomly picks ONE of these links every time it runs
     video_url = random.choice(gameplay_videos)
     
-    # Pick a random starting point in the video (e.g., between 1 and 20 mins)
+    # It then picks a random 45-second chunk from somewhere in the middle
     start_time = random.randint(60, 1200)
-    end_time = start_time + 45 
+    end_time = start_time + 45
 
     subprocess.run([
         "yt-dlp", 
