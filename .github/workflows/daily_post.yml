@@ -33,11 +33,20 @@ jobs:
           sudo apt-get install -y --no-install-recommends tzdata imagemagick ffmpeg nodejs
           sudo sed -i 's/none/read,write/g' /etc/ImageMagick-6/policy.xml
 
-      - name: Download Master Background Video
+      - name: Download Random Background Video from Dropbox
         run: |
-          echo "Downloading background footage from GitHub Releases..."
-          # REPLACE THE LINK BELOW WITH YOUR COPIED GITHUB RELEASE LINK
-          curl -L -o brainrot.mp4 "https://github.com/YourUsername/auto-shorts/releases/download/v1.0/your_video_name.mp4"
+          echo "Selecting a random video from the Dropbox pool..."
+          
+          LINKS=(
+            "https://www.dropbox.com/scl/fi/gkc4ic16jzeba1qlym9pj/Subway-Surfers-Gameplay-No-Copyright-Vertical-OrbitalNCG-1080p-h264-youtube.mp4?rlkey=gnbc8wyv7mbt3jl20ott5se2a&st=cy2f0r1z&dl=0"
+            "https://www.dropbox.com/scl/fi/vmnb2wlyyvsv5cqlhn1ml/Minecraft-Parkour-Gameplay-NO-COPYRIGHT-Vertical-Orbital-No-Copyright-Gameplay-1080p-h264-youtube.mp4?rlkey=5fzc7yhrkv1pzb67ixsjtgvw4&st=gslb8oi0&dl=0"
+            "https://www.dropbox.com/scl/fi/m0gmnzczxmvh3jknhdn6p/GTA-5-Gameplay-No-Copyright-Mega-Ramp-Vertical-OrbitalNCG-1080p-h264-youtube.mp4?rlkey=twa4eyjcsddvjartfqj6h6m7q&st=bf2wojvn&dl=0"
+          )
+          
+          SELECTED_LINK=${LINKS[$RANDOM % ${#LINKS[@]}]}
+          
+          echo "Downloading the selected video..."
+          wget -q -O brainrot.mp4 "$SELECTED_LINK"
 
       - name: Install Python Dependencies
         run: |
