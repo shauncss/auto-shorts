@@ -101,13 +101,13 @@ def get_dynamic_captions(vtt_file, video_w):
 # 5. THE EDITOR: SLICE & ASSEMBLE
 # ==========================================
 def edit_video():
-    print("🎬 Slicing local gameplay and assembling video...")
+    print("🎬 Slicing cloud background and assembling video...")
     
-    # Load the local brainrot file instead of downloading
-    video = VideoFileClip("brainrot.mp4")
+    # Load the downloaded file, explicitly ignore corrupted audio to prevent freezing
+    video = VideoFileClip("brainrot.mp4", audio=False)
     audio = AudioFileClip("voice.mp3")
     
-    # Crop the widescreen gameplay to vertical 9:16
+    # Crop to vertical 9:16
     target_w = video.h * (9/16)
     x_center = video.w / 2
     video = video.cropped(
@@ -117,8 +117,7 @@ def edit_video():
         y2=video.h
     )
     
-    # Pick a random starting point in your local video
-    # Ensures it doesn't pick a start time too close to the end
+    # Random slice with a 15-second safety buffer at the end
     safety_buffer = 15
     max_start_time = video.duration - audio.duration - safety_buffer
     
@@ -126,16 +125,23 @@ def edit_video():
         random_start = random.uniform(0, max_start_time)
         video = video.subclipped(random_start, random_start + audio.duration)
     else:
-        # If the audio is somehow longer than your whole video, just use the whole video
         video = video.subclipped(0, video.duration)
 
     video = video.with_audio(audio)
     
-    # Add the captions
+    # Apply dynamic captions
     caption_clips = get_dynamic_captions("subs.vtt", video.w)
     
     final_video = CompositeVideoClip([video] + caption_clips)
-    final_video.write_videofile("final_short.mp4", fps=30, preset="ultrafast", logger=None)
+    
+    # Force 30fps and multithreading for a clean, freeze-free render
+    final_video.write_videofile(
+        "final_short.mp4", 
+        fps=30, 
+        preset="ultrafast", 
+        threads=4,
+        logger=None
+    )
     
     final_video.close()
     video.close()
@@ -157,7 +163,7 @@ def upload_to_youtube(title, description):
                 "categoryId": "22",
                 "title": title[:100], 
                 "description": description,
-                "tags": ["shorts", "facts"]
+                "tags": ["shorts", "facts", "automation"]
             },
             "status": {
                 "privacyStatus": "private", 
@@ -177,12 +183,13 @@ if __name__ == "__main__":
     try:
         content = generate_content()
         generate_audio_and_subs(content["script"])
-        edit_video() # Slices the local brainrot.mp4 automatically!
+        edit_video()
         upload_to_youtube(content["title"], content["description"])
         
         try:
             os.remove("voice.mp3")
             os.remove("subs.vtt")
+            os.remove("brainrot.mp4")
         except PermissionError:
             pass
             
