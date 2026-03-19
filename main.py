@@ -28,7 +28,6 @@ def generate_content():
     else:
         topic_prompt = "Pick a random, highly fascinating historical or scientific fact."
 
-    # UPGRADE: Forced visual-specific search terms
     prompt = f"""
     {topic_prompt}
     
@@ -104,7 +103,7 @@ def generate_audio_and_subs(script_text):
     ])
 
 # ==========================================
-# 5. DYNAMIC CAPTION PARSER (Bulletproof)
+# 5. DYNAMIC CAPTION PARSER (Viral Video Style)
 # ==========================================
 def get_dynamic_captions(vtt_file, video_w, video_h):
     with open(vtt_file, 'r', encoding='utf-8') as f:
@@ -130,7 +129,6 @@ def get_dynamic_captions(vtt_file, video_w, video_h):
     if start_t and end_t and text_buffer:
         raw_matches.append({"start": start_t, "end": end_t, "text": " ".join(text_buffer)})
 
-    # UPGRADE: Bulletproof time parser that cannot crash on missing milliseconds
     def to_sec(t_str):
         try:
             t_str = t_str.replace(',', '.')
@@ -151,33 +149,32 @@ def get_dynamic_captions(vtt_file, video_w, video_h):
             return 0.0
 
     clips = []
-    chunk_size = 2 
-    font_path = os.path.abspath('Roboto-Bold.ttf') # Force it to use your uploaded font file
+    font_path = os.path.abspath('Roboto-Bold.ttf') 
     
-    for i in range(0, len(raw_matches), chunk_size):
-        chunk = raw_matches[i:i+chunk_size]
-        if not chunk: continue
+    # UPGRADE: Loop through 1 block at a time (1-3 words max per screen)
+    for match in raw_matches:
+        c_start = to_sec(match["start"])
+        c_end = to_sec(match["end"])
         
-        c_start = to_sec(chunk[0]["start"])
-        c_end = to_sec(chunk[-1]["end"])
-        
-        # Prevent 0-duration clips from crashing MoviePy
         if c_end <= c_start:
             c_end = c_start + 0.5 
             
-        text = " ".join([m["text"] for m in chunk])
+        text = match["text"]
         
-        # Aggressively strip any non-standard characters that crash Linux ImageMagick
+        # Keep text clean for ImageMagick
         clean_text = "".join([c for c in text if c.isalnum() or c.isspace() or c in ".,!?"])
         
         try:
+            # UPGRADE: Removed black background, added thick black outline
             txt_clip = TextClip(
-                text=f" {clean_text.upper()} ", 
-                font_size=90,
+                text=clean_text.upper(), 
+                font_size=85,
                 color='white',
-                bg_color='black',
                 font=font_path, 
+                stroke_color='black',
+                stroke_width=6,
                 method='caption',
+                align='center',
                 size=(video_w - 150, None)
             ).with_position('center').with_start(c_start).with_duration(c_end - c_start)
             
@@ -185,7 +182,7 @@ def get_dynamic_captions(vtt_file, video_w, video_h):
         except Exception as e:
             print(f"⚠️ Skipped rendering a caption block due to ImageMagick error: {e}")
         
-    print(f"✅ Generated {len(clips)} dynamic caption clips.")
+    print(f"✅ Generated {len(clips)} fast-paced caption clips.")
     return clips
 
 # ==========================================
