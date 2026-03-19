@@ -104,10 +104,9 @@ def generate_audio_and_subs(script_text):
     ])
 
 # ==========================================
-# 5. DYNAMIC CAPTION PARSER (Bulletproof Fallback)
+# 5. DYNAMIC CAPTION PARSER (Bulletproof)
 # ==========================================
 def get_dynamic_captions(vtt_file, video_w, video_h):
-    # This manual line-by-line parser is immune to formatting bugs
     with open(vtt_file, 'r', encoding='utf-8') as f:
         lines = f.readlines()
         
@@ -131,34 +130,60 @@ def get_dynamic_captions(vtt_file, video_w, video_h):
     if start_t and end_t and text_buffer:
         raw_matches.append({"start": start_t, "end": end_t, "text": " ".join(text_buffer)})
 
+    # UPGRADE: Bulletproof time parser that cannot crash on missing milliseconds
     def to_sec(t_str):
-        h, m, s = t_str.split(':')
-        s, ms = s.split('.')
-        return int(h)*3600 + int(m)*60 + int(s) + int(ms)/1000.0
+        try:
+            t_str = t_str.replace(',', '.')
+            parts = t_str.split(':')
+            if len(parts) == 3:
+                h, m, s = parts
+            elif len(parts) == 2:
+                h, m, s = 0, parts[0], parts[1]
+            else:
+                h, m, s = 0, 0, parts[0]
+                
+            if '.' in s:
+                s, ms = s.split('.')
+            else:
+                ms = 0
+            return int(h)*3600 + int(m)*60 + int(s) + int(ms)/1000.0
+        except Exception:
+            return 0.0
 
     clips = []
     chunk_size = 2 
+    font_path = os.path.abspath('Roboto-Bold.ttf') # Force it to use your uploaded font file
+    
     for i in range(0, len(raw_matches), chunk_size):
         chunk = raw_matches[i:i+chunk_size]
         if not chunk: continue
         
         c_start = to_sec(chunk[0]["start"])
         c_end = to_sec(chunk[-1]["end"])
+        
+        # Prevent 0-duration clips from crashing MoviePy
+        if c_end <= c_start:
+            c_end = c_start + 0.5 
+            
         text = " ".join([m["text"] for m in chunk])
         
-        clean_text = text.replace('"', '').replace("'", "").replace("\u2019", "").replace(";", "")
+        # Aggressively strip any non-standard characters that crash Linux ImageMagick
+        clean_text = "".join([c for c in text if c.isalnum() or c.isspace() or c in ".,!?"])
         
-        # UPGRADE: Removed stroke/font, added solid black background box
-        txt_clip = TextClip(
-            text=f" {clean_text.upper()} ", # Spaces add padding inside the box
-            font_size=90,
-            color='white',
-            bg_color='black', # This forces the text to be visible no matter what
-            method='caption',
-            size=(video_w - 150, None)
-        ).with_position('center').with_start(c_start).with_duration(c_end - c_start)
-        
-        clips.append(txt_clip)
+        try:
+            txt_clip = TextClip(
+                text=f" {clean_text.upper()} ", 
+                font_size=90,
+                color='white',
+                bg_color='black',
+                font=font_path, 
+                method='caption',
+                size=(video_w - 150, None)
+            ).with_position('center').with_start(c_start).with_duration(c_end - c_start)
+            
+            clips.append(txt_clip)
+        except Exception as e:
+            print(f"⚠️ Skipped rendering a caption block due to ImageMagick error: {e}")
         
     print(f"✅ Generated {len(clips)} dynamic caption clips.")
     return clips
