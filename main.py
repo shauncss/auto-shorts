@@ -101,14 +101,11 @@ def generate_audio_and_subs(script_text):
     ])
 
 # ==========================================
-# 5. DYNAMIC CAPTION PARSER (Few by Few)
+# 5. DYNAMIC CAPTION 
 # ==========================================
 def get_dynamic_captions(vtt_file, video_w, video_h):
     with open(vtt_file, 'r', encoding='utf-8') as f:
         content = f.read()
-    
-    pattern = re.compile(r"(\d{2}:\d{2}:\d{2}\.\d{3}) --> (\d{2}:\d{2}:\d{2}\.\d{3})\n(.*?)\n", re.DOTALL)
-    matches = pattern.findall(content)
     
     def to_sec(t_str):
         h, m, s = t_str.split(':')
@@ -116,21 +113,36 @@ def get_dynamic_captions(vtt_file, video_w, video_h):
         return int(h)*3600 + int(m)*60 + int(s) + int(ms)/1000.0
 
     clips = []
-    chunk_size = 2 # Shows 2 words at a time for fast-paced TikTok style
+    # Standardize all line endings to prevent formatting crashes
+    content = content.replace('\r\n', '\n')
+    blocks = content.strip().split('\n\n')
     
+    matches = []
+    for block in blocks:
+        lines = block.split('\n')
+        # Find the line with the timestamp arrow
+        if len(lines) >= 2 and '-->' in lines[0]:
+            times = lines[0].split(' --> ')
+            if len(times) == 2:
+                start_t = to_sec(times[0].strip())
+                end_t = to_sec(times[1].strip())
+                text = " ".join(lines[1:]).strip()
+                matches.append({"start": start_t, "end": end_t, "text": text})
+    
+    chunk_size = 2 
     for i in range(0, len(matches), chunk_size):
         chunk = matches[i:i+chunk_size]
         if not chunk: continue
         
-        start_t = to_sec(chunk[0][0])
-        end_t = to_sec(chunk[-1][1])
-        text = " ".join([m[2].strip() for m in chunk])
+        start_t = chunk[0]["start"]
+        end_t = chunk[-1]["end"]
+        text = " ".join([m["text"] for m in chunk])
         
         txt_clip = TextClip(
             text=text.upper(),
-            font_size=95, # Massive font
+            font_size=95,
             color='white',
-            font='Roboto-Bold.ttf',
+            font=os.path.abspath('Roboto-Bold.ttf'), # Force absolute file path
             stroke_color='black',
             stroke_width=6,
             method='caption',
