@@ -151,7 +151,6 @@ def get_dynamic_captions(vtt_file, video_w, video_h):
     clips = []
     font_path = os.path.abspath('Roboto-Bold.ttf') 
     
-    # UPGRADE: Loop through 1 block at a time (1-3 words max per screen)
     for match in raw_matches:
         c_start = to_sec(match["start"])
         c_end = to_sec(match["end"])
@@ -165,7 +164,6 @@ def get_dynamic_captions(vtt_file, video_w, video_h):
         clean_text = "".join([c for c in text if c.isalnum() or c.isspace() or c in ".,!?"])
         
         try:
-            # UPGRADE: Removed black background, added thick black outline
             txt_clip = TextClip(
                 text=clean_text.upper(), 
                 font_size=85,
