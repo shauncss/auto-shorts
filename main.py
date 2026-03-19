@@ -63,42 +63,74 @@ def generate_content():
     return json.loads(clean_text)
 
 # ==========================================
-# 3. THE VISUALS: FETCH PEXELS IMAGES
-# ==========================================
-def fetch_pexels_image(query, index):
-    if not PEXELS_API_KEY:
-        return None
-        
-    print(f"🖼️ Fetching image for scene {index+1}: '{query}'")
-    url = f"https://api.pexels.com/v1/search?query={query}&per_page=1&orientation=portrait"
-    headers = {"Authorization": PEXELS_API_KEY}
-    
-    try:
-        r = requests.get(url, headers=headers)
-        data = r.json()
-        if data.get("photos"):
-            img_url = data["photos"][0]["src"]["large2x"]
-            img_data = requests.get(img_url).content
-            filename = f"scene_{index}.jpg"
-            with open(filename, "wb") as f:
-                f.write(img_data)
-            return filename
-    except Exception as e:
-        print(f"⚠️ Failed to fetch image for '{query}': {e}")
-    return None
-
-# ==========================================
-# 4. THE VOICE & SUBTITLES
+# 3. THE VOICE & SUBTITLES (Upgraded Energy)
 # ==========================================
 def generate_audio_and_subs(script_text):
-    print("🎙️ Generating voiceover and sync data...")
+    print("🎙️ Generating energetic voiceover and sync data...")
+    # Switched to Andrew (energetic), increased speed by 10%
     subprocess.run([
         "edge-tts", 
-        "--voice", "en-US-ChristopherNeural", 
+        "--voice", "en-US-AndrewNeural", 
+        "--rate", "+10%", 
         "--text", script_text, 
         "--write-media", "voice.mp3",
         "--write-subtitles", "subs.vtt"
     ])
+
+# ==========================================
+# 4. DYNAMIC CAPTION PARSER (Bulletproof)
+# ==========================================
+def get_dynamic_captions(vtt_file, video_w, video_h):
+    with open(vtt_file, 'r', encoding='utf-8') as f:
+        content = f.read()
+    
+    def to_sec(t_str):
+        h, m, s = t_str.split(':')
+        s, ms = s.split('.')
+        return int(h)*3600 + int(m)*60 + int(s) + int(ms)/1000.0
+
+    clips = []
+    content = content.replace('\r\n', '\n')
+    blocks = content.strip().split('\n\n')
+    
+    matches = []
+    for block in blocks:
+        lines = block.split('\n')
+        if len(lines) >= 2 and '-->' in lines[0]:
+            times = lines[0].split(' --> ')
+            if len(times) == 2:
+                start_t = to_sec(times[0].strip())
+                end_t = to_sec(times[1].strip())
+                text = " ".join(lines[1:]).strip()
+                matches.append({"start": start_t, "end": end_t, "text": text})
+    
+    chunk_size = 2 
+    for i in range(0, len(matches), chunk_size):
+        chunk = matches[i:i+chunk_size]
+        if not chunk: continue
+        
+        start_t = chunk[0]["start"]
+        end_t = chunk[-1]["end"]
+        text = " ".join([m["text"] for m in chunk])
+        
+        # Strip characters that crash ImageMagick (quotes, apostrophes, weird symbols)
+        clean_text = text.replace('"', '').replace("'", "").replace("\u2019", "").replace(";", "")
+        
+        txt_clip = TextClip(
+            text=clean_text.upper(),
+            font_size=95,
+            color='white',
+            font='DejaVu-Sans-Bold', # Use the native Linux font we just installed
+            stroke_color='black',
+            stroke_width=6,
+            method='caption',
+            size=(video_w - 150, None)
+        ).with_position('center').with_start(start_t).with_duration(end_t - start_t)
+        
+        clips.append(txt_clip)
+        
+    print(f"✅ Generated {len(clips)} dynamic caption clips.")
+    return clips
 
 # ==========================================
 # 5. DYNAMIC CAPTION 
