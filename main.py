@@ -1,7 +1,6 @@
 import os
 import json
 import random
-import re
 import subprocess
 import requests
 from google import genai 
@@ -29,29 +28,29 @@ def generate_content():
     else:
         topic_prompt = "Pick a random, highly fascinating historical or scientific fact."
 
+    # UPGRADE: Forced visual-specific search terms
     prompt = f"""
     {topic_prompt}
     
     You MUST write a highly engaging 30-second YouTube Shorts script following this EXACT structure:
-    1. Hook (0-3s): Start with a bold, controversial, or curiosity-driven statement to grab attention.
-    2. Build-up (3-10s): Quickly explain the situation using fast, simple words.
-    3. Value / Twist (10-20s): Deliver something surprising, useful, or unexpected.
-    4. Payoff (20-25s): Show the result, reveal, or conclusion.
-    5. CTA (last 3s): Encourage engagement (e.g., comment, subscribe).
+    1. Hook (0-3s): Start with a bold, controversial, or curiosity-driven statement.
+    2. Build-up (3-10s): Quickly explain the situation.
+    3. Value / Twist (10-20s): Deliver something surprising.
+    4. Payoff (20-25s): Show the result or conclusion.
+    5. CTA (last 3s): Encourage engagement.
 
-    Tone: Conversational, slightly dramatic, no fluff.
     Length: Exactly 70-80 words total.
     
     Format your response EXACTLY like this JSON:
     {{
-        "title": "A catchy YouTube title",
-        "description": "A short YouTube description with 3 hashtags",
+        "title": "Catchy title",
+        "description": "Short description #shorts",
         "scenes": [
-            {{"text": "Hook text goes here...", "search": "One word to search for an image (e.g. 'fire')"}},
-            {{"text": "Build-up text...", "search": "One search word (e.g. 'hacker')"}},
-            {{"text": "Twist text...", "search": "One search word (e.g. 'money')"}},
-            {{"text": "Payoff text...", "search": "One search word (e.g. 'explosion')"}},
-            {{"text": "CTA text...", "search": "One search word (e.g. 'arrow')"}}
+            {{"text": "Hook text...", "search": "2-3 word LITERAL visual description (e.g., 'man running fast', 'exploding volcano')"}},
+            {{"text": "Build-up text...", "search": "2-3 word LITERAL visual description (e.g., 'hacker typing dark')"}},
+            {{"text": "Twist text...", "search": "2-3 word LITERAL visual description (e.g., 'ancient roman sword')"}},
+            {{"text": "Payoff text...", "search": "2-3 word LITERAL visual description (e.g., 'scientist laboratory')"}},
+            {{"text": "CTA text...", "search": "2-3 word LITERAL visual description (e.g., 'finger pointing screen')"}}
         ]
     }}
     """
@@ -84,12 +83,14 @@ def fetch_pexels_image(query, index):
             with open(filename, "wb") as f:
                 f.write(img_data)
             return filename
+        else:
+            print(f"⚠️ No Pexels results found for '{query}'.")
     except Exception as e:
         print(f"⚠️ Failed to fetch image for '{query}': {e}")
     return None
 
 # ==========================================
-# 4. THE VOICE & SUBTITLES (Upgraded Energy)
+# 4. THE VOICE & SUBTITLES
 # ==========================================
 def generate_audio_and_subs(script_text):
     print("🎙️ Generating energetic voiceover and sync data...")
@@ -103,57 +104,62 @@ def generate_audio_and_subs(script_text):
     ])
 
 # ==========================================
-# 5. DYNAMIC CAPTION PARSER (Bulletproof)
+# 5. DYNAMIC CAPTION PARSER (Bulletproof Fallback)
 # ==========================================
 def get_dynamic_captions(vtt_file, video_w, video_h):
+    # This manual line-by-line parser is immune to formatting bugs
     with open(vtt_file, 'r', encoding='utf-8') as f:
-        # Standardize line endings for Linux
-        content = f.read().replace('\r\n', '\n')
+        lines = f.readlines()
+        
+    raw_matches = []
+    start_t = None
+    end_t = None
+    text_buffer = []
     
+    for line in lines:
+        line = line.strip()
+        if '-->' in line:
+            if start_t and end_t and text_buffer:
+                raw_matches.append({"start": start_t, "end": end_t, "text": " ".join(text_buffer)})
+            parts = line.split('-->')
+            start_t = parts[0].strip()
+            end_t = parts[1].strip()
+            text_buffer = []
+        elif line and not line.isdigit() and line != "WEBVTT":
+            text_buffer.append(line)
+            
+    if start_t and end_t and text_buffer:
+        raw_matches.append({"start": start_t, "end": end_t, "text": " ".join(text_buffer)})
+
     def to_sec(t_str):
         h, m, s = t_str.split(':')
         s, ms = s.split('.')
         return int(h)*3600 + int(m)*60 + int(s) + int(ms)/1000.0
 
-    # Aggressively hunt for timestamps, ignoring any invisible Cue IDs
-    pattern = re.compile(r"(\d{2}:\d{2}:\d{2}\.\d{3})\s*-->\s*(\d{2}:\d{2}:\d{2}\.\d{3})\n(.*?)(?=\n\n|\Z)", re.DOTALL)
-    raw_matches = pattern.findall(content)
-    
-    matches = []
-    for match in raw_matches:
-        matches.append({
-            "start": to_sec(match[0]),
-            "end": to_sec(match[1]),
-            "text": match[2].strip().replace('\n', ' ')
-        })
-
     clips = []
     chunk_size = 2 
-    for i in range(0, len(matches), chunk_size):
-        chunk = matches[i:i+chunk_size]
+    for i in range(0, len(raw_matches), chunk_size):
+        chunk = raw_matches[i:i+chunk_size]
         if not chunk: continue
         
-        start_t = chunk[0]["start"]
-        end_t = chunk[-1]["end"]
+        c_start = to_sec(chunk[0]["start"])
+        c_end = to_sec(chunk[-1]["end"])
         text = " ".join([m["text"] for m in chunk])
         
-        # Strip characters that crash ImageMagick
         clean_text = text.replace('"', '').replace("'", "").replace("\u2019", "").replace(";", "")
         
+        # UPGRADE: Removed stroke/font, added solid black background box
         txt_clip = TextClip(
-            text=clean_text.upper(),
-            font_size=95,
+            text=f" {clean_text.upper()} ", # Spaces add padding inside the box
+            font_size=90,
             color='white',
-            font='DejaVu-Sans-Bold', 
-            stroke_color='black',
-            stroke_width=6,
+            bg_color='black', # This forces the text to be visible no matter what
             method='caption',
             size=(video_w - 150, None)
-        ).with_position('center').with_start(start_t).with_duration(end_t - start_t)
+        ).with_position('center').with_start(c_start).with_duration(c_end - c_start)
         
         clips.append(txt_clip)
         
-    # This will now print exactly how many caption blocks it successfully built!
     print(f"✅ Generated {len(clips)} dynamic caption clips.")
     return clips
 
@@ -169,11 +175,9 @@ def edit_video(scenes):
     audio = AudioFileClip("voice.mp3")
     segment_duration = audio.duration / len(scenes)
     
-    # --- TOP HALF: Contextual Images ---
     top_clips = []
     for i, scene in enumerate(scenes):
         img_path = f"scene_{i}.jpg" if os.path.exists(f"scene_{i}.jpg") else None
-        
         if img_path:
             img_clip = ImageClip(img_path).with_duration(segment_duration)
             scale = max(W / img_clip.w, half_H / img_clip.h)
@@ -181,12 +185,10 @@ def edit_video(scenes):
             img_clip = img_clip.cropped(x_center=img_clip.w/2, y_center=img_clip.h/2, width=W, height=half_H)
         else:
             img_clip = ColorClip(size=(W, half_H), color=(30, 30, 30)).with_duration(segment_duration)
-            
         top_clips.append(img_clip)
         
     top_half = concatenate_videoclips(top_clips).with_position(("center", "top"))
     
-    # --- BOTTOM HALF: Brainrot ---
     video = VideoFileClip("brainrot.mp4", audio=False)
     scale = max(W / video.w, half_H / video.h)
     video = video.resized(scale)
@@ -203,7 +205,6 @@ def edit_video(scenes):
 
     bottom_half = bottom_half.with_position(("center", "bottom"))
     
-    # --- COMBINE & RENDER ---
     bg_canvas = ColorClip(size=(W, H), color=(0,0,0)).with_duration(audio.duration)
     bg_canvas = bg_canvas.with_audio(audio)
     
@@ -251,26 +252,18 @@ def upload_to_youtube(title, description):
     response = request.execute()
     print(f"✅ Success! Video ID: {response['id']}")
 
-# ==========================================
-# MAIN EXECUTION
-# ==========================================
 if __name__ == "__main__":
     try:
         content = generate_content()
-        
-        # 1. Fetch Images based on scenes
         for i, scene in enumerate(content["scenes"]):
             fetch_pexels_image(scene["search"], i)
             
-        # 2. Combine scenes for voiceover
         full_script = " ".join([scene["text"] for scene in content["scenes"]])
         generate_audio_and_subs(full_script)
         
-        # 3. Edit & Upload
         edit_video(content["scenes"])
         upload_to_youtube(content["title"], content["description"])
         
-        # Cleanup
         try:
             os.remove("voice.mp3")
             os.remove("subs.vtt")
@@ -280,6 +273,5 @@ if __name__ == "__main__":
                     os.remove(f"scene_{i}.jpg")
         except PermissionError:
             pass
-            
     except Exception as e:
         print(f"❌ An error occurred: {e}")
