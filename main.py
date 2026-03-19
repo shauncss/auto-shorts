@@ -3,8 +3,9 @@ import json
 import random
 import re
 import subprocess
+import requests
 from google import genai 
-from moviepy import VideoFileClip, AudioFileClip, TextClip, CompositeVideoClip
+from moviepy import VideoFileClip, AudioFileClip, TextClip, CompositeVideoClip, ImageClip, ColorClip, concatenate_videoclips
 import googleapiclient.discovery
 from google.oauth2.credentials import Credentials
 from googleapiclient.http import MediaFileUpload
@@ -13,15 +14,16 @@ from googleapiclient.http import MediaFileUpload
 # 1. SETUP & CREDENTIALS
 # ==========================================
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "YOUR_GEMINI_KEY")
+PEXELS_API_KEY = os.environ.get("PEXELS_API_KEY", "").strip()
 CUSTOM_IDEA = os.environ.get("CUSTOM_IDEA", "").strip()
 
 client = genai.Client(api_key=GEMINI_API_KEY)
 
 # ==========================================
-# 2. THE BRAIN: GENERATE SCRIPT
+# 2. THE BRAIN: GENERATE SCRIPT & SCENES
 # ==========================================
 def generate_content():
-    print("🧠 Generating script with Gemini...")
+    print("🧠 Generating highly engaging script with Gemini...")
     if CUSTOM_IDEA:
         topic_prompt = f"Write about this specific idea: {CUSTOM_IDEA}."
     else:
@@ -29,12 +31,28 @@ def generate_content():
 
     prompt = f"""
     {topic_prompt}
-    The script MUST be exactly 70 to 80 words long so it takes about 30 seconds to speak.
+    
+    You MUST write a highly engaging 30-second YouTube Shorts script following this EXACT structure:
+    1. Hook (0-3s): Start with a bold, controversial, or curiosity-driven statement to grab attention.
+    2. Build-up (3-10s): Quickly explain the situation using fast, simple words.
+    3. Value / Twist (10-20s): Deliver something surprising, useful, or unexpected.
+    4. Payoff (20-25s): Show the result, reveal, or conclusion.
+    5. CTA (last 3s): Encourage engagement (e.g., comment, subscribe).
+
+    Tone: Conversational, slightly dramatic, no fluff.
+    Length: Exactly 70-80 words total.
+    
     Format your response EXACTLY like this JSON:
     {{
-        "script": "The actual spoken text goes here.",
         "title": "A catchy YouTube title",
-        "description": "A short YouTube description with 3 hashtags"
+        "description": "A short YouTube description with 3 hashtags",
+        "scenes": [
+            {{"text": "Hook text goes here...", "search": "One word to search for an image (e.g. 'fire')"}},
+            {{"text": "Build-up text...", "search": "One search word (e.g. 'hacker')"}},
+            {{"text": "Twist text...", "search": "One search word (e.g. 'money')"}},
+            {{"text": "Payoff text...", "search": "One search word (e.g. 'explosion')"}},
+            {{"text": "CTA text...", "search": "One search word (e.g. 'arrow')"}}
+        ]
     }}
     """
     response = client.models.generate_content(
@@ -45,7 +63,32 @@ def generate_content():
     return json.loads(clean_text)
 
 # ==========================================
-# 3. THE VOICE & SUBTITLES
+# 3. THE VISUALS: FETCH PEXELS IMAGES
+# ==========================================
+def fetch_pexels_image(query, index):
+    if not PEXELS_API_KEY:
+        return None
+        
+    print(f"🖼️ Fetching image for scene {index+1}: '{query}'")
+    url = f"https://api.pexels.com/v1/search?query={query}&per_page=1&orientation=portrait"
+    headers = {"Authorization": PEXELS_API_KEY}
+    
+    try:
+        r = requests.get(url, headers=headers)
+        data = r.json()
+        if data.get("photos"):
+            img_url = data["photos"][0]["src"]["large2x"]
+            img_data = requests.get(img_url).content
+            filename = f"scene_{index}.jpg"
+            with open(filename, "wb") as f:
+                f.write(img_data)
+            return filename
+    except Exception as e:
+        print(f"⚠️ Failed to fetch image for '{query}': {e}")
+    return None
+
+# ==========================================
+# 4. THE VOICE & SUBTITLES
 # ==========================================
 def generate_audio_and_subs(script_text):
     print("🎙️ Generating voiceover and sync data...")
@@ -58,9 +101,9 @@ def generate_audio_and_subs(script_text):
     ])
 
 # ==========================================
-# 4. DYNAMIC CAPTION PARSER
+# 5. DYNAMIC CAPTION PARSER (Few by Few)
 # ==========================================
-def get_dynamic_captions(vtt_file, video_w):
+def get_dynamic_captions(vtt_file, video_w, video_h):
     with open(vtt_file, 'r', encoding='utf-8') as f:
         content = f.read()
     
@@ -73,7 +116,7 @@ def get_dynamic_captions(vtt_file, video_w):
         return int(h)*3600 + int(m)*60 + int(s) + int(ms)/1000.0
 
     clips = []
-    chunk_size = 4 
+    chunk_size = 2 # Shows 2 words at a time for fast-paced TikTok style
     
     for i in range(0, len(matches), chunk_size):
         chunk = matches[i:i+chunk_size]
@@ -84,57 +127,77 @@ def get_dynamic_captions(vtt_file, video_w):
         text = " ".join([m[2].strip() for m in chunk])
         
         txt_clip = TextClip(
-            text=text,
-            font_size=80,
+            text=text.upper(),
+            font_size=95, # Massive font
             color='white',
             font='Roboto-Bold.ttf',
             stroke_color='black',
-            stroke_width=4,
+            stroke_width=6,
             method='caption',
-            size=(video_w - 200, None)
+            size=(video_w - 150, None)
         ).with_position('center').with_start(start_t).with_duration(end_t - start_t)
         
         clips.append(txt_clip)
     return clips
 
 # ==========================================
-# 5. THE EDITOR: SLICE & ASSEMBLE
+# 6. THE EDITOR: SPLIT SCREEN ASSEMBLE
 # ==========================================
-def edit_video():
-    print("🎬 Slicing cloud background and assembling video...")
+def edit_video(scenes):
+    print("🎬 Assembling Split-Screen Video...")
     
-    # Load the downloaded file, explicitly ignore corrupted audio to prevent freezing
-    video = VideoFileClip("brainrot.mp4", audio=False)
+    W, H = 1080, 1920
+    half_H = 960
+    
     audio = AudioFileClip("voice.mp3")
+    segment_duration = audio.duration / len(scenes)
     
-    # Crop to vertical 9:16
-    target_w = video.h * (9/16)
-    x_center = video.w / 2
-    video = video.cropped(
-        x1=x_center - target_w/2, 
-        y1=0, 
-        x2=x_center + target_w/2, 
-        y2=video.h
-    )
+    # --- TOP HALF: Contextual Images ---
+    top_clips = []
+    for i, scene in enumerate(scenes):
+        img_path = fetch_pexels_image(scene["search"], i)
+        
+        if img_path:
+            img_clip = ImageClip(img_path).with_duration(segment_duration)
+            # Resize and crop to perfectly fit the top half (1080x960)
+            scale = max(W / img_clip.w, half_H / img_clip.h)
+            img_clip = img_clip.resized(scale)
+            img_clip = img_clip.cropped(x_center=img_clip.w/2, y_center=img_clip.h/2, width=W, height=half_H)
+        else:
+            # Fallback if Pexels fails
+            img_clip = ColorClip(size=(W, half_H), color=(30, 30, 30)).with_duration(segment_duration)
+            
+        top_clips.append(img_clip)
+        
+    top_half = concatenate_videoclips(top_clips).with_position(("center", "top"))
     
-    # Random slice with a 15-second safety buffer at the end
+    # --- BOTTOM HALF: Brainrot ---
+    video = VideoFileClip("brainrot.mp4", audio=False)
+    scale = max(W / video.w, half_H / video.h)
+    video = video.resized(scale)
+    video = video.cropped(x_center=video.w/2, y_center=video.h/2, width=W, height=half_H)
+    
     safety_buffer = 15
     max_start_time = video.duration - audio.duration - safety_buffer
     
     if max_start_time > 0:
         random_start = random.uniform(0, max_start_time)
-        video = video.subclipped(random_start, random_start + audio.duration)
+        bottom_half = video.subclipped(random_start, random_start + audio.duration)
     else:
-        video = video.subclipped(0, video.duration)
+        bottom_half = video.subclipped(0, video.duration)
 
-    video = video.with_audio(audio)
+    bottom_half = bottom_half.with_position(("center", "bottom"))
     
-    # Apply dynamic captions
-    caption_clips = get_dynamic_captions("subs.vtt", video.w)
+    # --- COMBINE & RENDER ---
+    # Create a blank black canvas
+    bg_canvas = ColorClip(size=(W, H), color=(0,0,0)).with_duration(audio.duration)
+    bg_canvas = bg_canvas.with_audio(audio)
     
-    final_video = CompositeVideoClip([video] + caption_clips)
+    # Captions sit dead center across the split line
+    caption_clips = get_dynamic_captions("subs.vtt", W, H)
     
-    # Force 30fps and multithreading for a clean, freeze-free render
+    final_video = CompositeVideoClip([bg_canvas, top_half, bottom_half] + caption_clips)
+    
     final_video.write_videofile(
         "final_short.mp4", 
         fps=30, 
@@ -144,11 +207,10 @@ def edit_video():
     )
     
     final_video.close()
-    video.close()
     audio.close()
 
 # ==========================================
-# 6. THE PUBLISHER
+# 7. THE PUBLISHER
 # ==========================================
 def upload_to_youtube(title, description):
     print("🚀 Uploading to YouTube...")
@@ -163,7 +225,7 @@ def upload_to_youtube(title, description):
                 "categoryId": "22",
                 "title": title[:100], 
                 "description": description,
-                "tags": ["shorts", "facts", "automation"]
+                "tags": ["shorts", "facts", "story"]
             },
             "status": {
                 "privacyStatus": "private", 
@@ -182,14 +244,21 @@ def upload_to_youtube(title, description):
 if __name__ == "__main__":
     try:
         content = generate_content()
-        generate_audio_and_subs(content["script"])
-        edit_video()
+        
+        # Combine all scenes into one script for the voiceover
+        full_script = " ".join([scene["text"] for scene in content["scenes"]])
+        generate_audio_and_subs(full_script)
+        
+        edit_video(content["scenes"])
         upload_to_youtube(content["title"], content["description"])
         
+        # Cleanup
         try:
             os.remove("voice.mp3")
             os.remove("subs.vtt")
-            os.remove("brainrot.mp4")
+            for i in range(len(content["scenes"])):
+                if os.path.exists(f"scene_{i}.jpg"):
+                    os.remove(f"scene_{i}.jpg")
         except PermissionError:
             pass
             
