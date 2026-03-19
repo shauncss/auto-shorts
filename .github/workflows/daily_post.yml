@@ -45,9 +45,12 @@ jobs:
           )
           
           SELECTED_LINK=${LINKS[$RANDOM % ${#LINKS[@]}]}
-          
           echo "Downloading the selected video..."
-          wget -q -O brainrot.mp4 "$SELECTED_LINK"
+
+          curl -L -o brainrot.mp4 "$SELECTED_LINK"
+          
+          FILESIZE=$(stat -c%s "brainrot.mp4")
+          if [ $FILESIZE -lt 1000000 ]; then echo "❌ ERROR: Downloaded an HTML page instead of a video. Check your links!"; exit 1; fi
 
       - name: Install Python Dependencies
         run: |

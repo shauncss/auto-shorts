@@ -107,28 +107,27 @@ def generate_audio_and_subs(script_text):
 # ==========================================
 def get_dynamic_captions(vtt_file, video_w, video_h):
     with open(vtt_file, 'r', encoding='utf-8') as f:
-        content = f.read()
+        # Standardize line endings for Linux
+        content = f.read().replace('\r\n', '\n')
     
     def to_sec(t_str):
         h, m, s = t_str.split(':')
         s, ms = s.split('.')
         return int(h)*3600 + int(m)*60 + int(s) + int(ms)/1000.0
 
-    clips = []
-    content = content.replace('\r\n', '\n')
-    blocks = content.strip().split('\n\n')
+    # Aggressively hunt for timestamps, ignoring any invisible Cue IDs
+    pattern = re.compile(r"(\d{2}:\d{2}:\d{2}\.\d{3})\s*-->\s*(\d{2}:\d{2}:\d{2}\.\d{3})\n(.*?)(?=\n\n|\Z)", re.DOTALL)
+    raw_matches = pattern.findall(content)
     
     matches = []
-    for block in blocks:
-        lines = block.split('\n')
-        if len(lines) >= 2 and '-->' in lines[0]:
-            times = lines[0].split(' --> ')
-            if len(times) == 2:
-                start_t = to_sec(times[0].strip())
-                end_t = to_sec(times[1].strip())
-                text = " ".join(lines[1:]).strip()
-                matches.append({"start": start_t, "end": end_t, "text": text})
-    
+    for match in raw_matches:
+        matches.append({
+            "start": to_sec(match[0]),
+            "end": to_sec(match[1]),
+            "text": match[2].strip().replace('\n', ' ')
+        })
+
+    clips = []
     chunk_size = 2 
     for i in range(0, len(matches), chunk_size):
         chunk = matches[i:i+chunk_size]
@@ -154,6 +153,7 @@ def get_dynamic_captions(vtt_file, video_w, video_h):
         
         clips.append(txt_clip)
         
+    # This will now print exactly how many caption blocks it successfully built!
     print(f"✅ Generated {len(clips)} dynamic caption clips.")
     return clips
 
