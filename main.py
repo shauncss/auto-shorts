@@ -3,6 +3,11 @@ import json
 import random
 import subprocess
 import requests
+
+import PIL.Image
+if not hasattr(PIL.Image, 'ANTIALIAS'):
+    PIL.Image.ANTIALIAS = PIL.Image.Resampling.LANCZOS
+    
 from google import genai 
 from moviepy.editor import VideoFileClip, AudioFileClip, TextClip, CompositeVideoClip, ImageClip, ColorClip, concatenate_videoclips
 import moviepy.video.fx.all as vfx 
