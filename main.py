@@ -103,7 +103,7 @@ def generate_audio_and_subs(script_text):
     ])
 
 # ==========================================
-# 5. DYNAMIC CAPTION PARSER (Viral Video Style)
+# 5. DYNAMIC CAPTION PARSER (TikTok / Hormozi Style)
 # ==========================================
 def get_dynamic_captions(vtt_file, video_w, video_h):
     with open(vtt_file, 'r', encoding='utf-8') as f:
@@ -159,28 +159,38 @@ def get_dynamic_captions(vtt_file, video_w, video_h):
             c_end = c_start + 0.5 
             
         text = match["text"]
+        words = text.split()
+        if not words: continue
         
-        # Keep text clean for ImageMagick
-        clean_text = "".join([c for c in text if c.isalnum() or c.isspace() or c in ".,!?"])
+        # Chop the timeframe into perfectly equal pieces for each word
+        word_duration = (c_end - c_start) / len(words)
         
-        try:
-            txt_clip = TextClip(
-                text=clean_text.upper(), 
-                font_size=85,
-                color='white',
-                font=font_path, 
-                stroke_color='black',
-                stroke_width=6,
-                method='caption',
-                align='center',
-                size=(video_w - 150, None)
-            ).with_position('center').with_start(c_start).with_duration(c_end - c_start)
+        for idx, word in enumerate(words):
+            clean_word = "".join([c for c in word if c.isalnum() or c in ".,!?"])
+            if not clean_word: continue
             
-            clips.append(txt_clip)
-        except Exception as e:
-            print(f"⚠️ Skipped rendering a caption block due to ImageMagick error: {e}")
+            # THE TIKTOK HIGHLIGHT EFFECT: Long words turn Yellow, short words stay White
+            word_color = 'yellow' if len(clean_word) > 4 else 'white'
+            w_start = c_start + (idx * word_duration)
+            
+            try:
+                txt_clip = TextClip(
+                    text=clean_word.upper(), 
+                    font_size=110, # Massive TikTok size
+                    color=word_color,
+                    font=font_path, 
+                    stroke_color='black',
+                    stroke_width=8,
+                    method='caption',
+                    align='center',
+                    size=(video_w - 100, None)
+                ).with_position('center').with_start(w_start).with_duration(word_duration)
+                
+                clips.append(txt_clip)
+            except Exception as e:
+                pass
         
-    print(f"✅ Generated {len(clips)} fast-paced caption clips.")
+    print(f"✅ Generated {len(clips)} fast-paced TikTok caption clips.")
     return clips
 
 # ==========================================
