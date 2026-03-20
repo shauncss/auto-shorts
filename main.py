@@ -4,10 +4,13 @@ import random
 import subprocess
 import requests
 
+# === THE MOVIEPY/PILLOW PATCH ===
+# This tricks MoviePy 1.0.3 into working with modern Pillow!
 import PIL.Image
 if not hasattr(PIL.Image, 'ANTIALIAS'):
     PIL.Image.ANTIALIAS = PIL.Image.Resampling.LANCZOS
-    
+# ================================
+
 from google import genai 
 from moviepy.editor import VideoFileClip, AudioFileClip, TextClip, CompositeVideoClip, ImageClip, ColorClip, concatenate_videoclips
 import moviepy.video.fx.all as vfx 
@@ -25,14 +28,27 @@ CUSTOM_IDEA = os.environ.get("CUSTOM_IDEA", "").strip()
 client = genai.Client(api_key=GEMINI_API_KEY)
 
 # ==========================================
-# 2. THE BRAIN: GENERATE SCRIPT & SCENES
+# 2. THE BRAIN: GENERATE SCRIPT & THEMES
 # ==========================================
+VIRAL_THEMES = [
+    "creepy unsolved historical mysteries",
+    "mind-blowing deep space anomalies",
+    "bizarre psychological experiments",
+    "scary deep ocean creatures and phenomena",
+    "crazy survival stories against all odds",
+    "secret historical cover-ups and glitches in reality",
+    "fascinating ancient technologies that shouldn't exist"
+]
+
 def generate_content():
     print("🧠 Generating highly engaging script with Gemini...")
+    
     if CUSTOM_IDEA:
         topic_prompt = f"Write about this specific idea: {CUSTOM_IDEA}."
     else:
-        topic_prompt = "Pick a random, highly fascinating historical or scientific fact."
+        selected_theme = random.choice(VIRAL_THEMES)
+        print(f"🎯 Selected Theme for this video: {selected_theme.upper()}")
+        topic_prompt = f"Pick a highly fascinating, true fact related to: {selected_theme}."
 
     prompt = f"""
     {topic_prompt}
@@ -51,7 +67,7 @@ def generate_content():
         "title": "Catchy title",
         "description": "Short description #shorts",
         "scenes": [
-            {{"text": "Hook text...", "search": "2-3 word LITERAL visual description (e.g., 'man running fast', 'exploding volcano')"}},
+            {{"text": "Hook text...", "search": "2-3 word LITERAL visual description (e.g., 'man running fast')"}},
             {{"text": "Build-up text...", "search": "2-3 word LITERAL visual description (e.g., 'hacker typing dark')"}},
             {{"text": "Twist text...", "search": "2-3 word LITERAL visual description (e.g., 'ancient roman sword')"}},
             {{"text": "Payoff text...", "search": "2-3 word LITERAL visual description (e.g., 'scientist laboratory')"}},
@@ -156,7 +172,6 @@ def get_dynamic_captions(vtt_file, video_w, video_h):
 
     font_path = os.path.abspath('Roboto-Bold.ttf') 
     
-    # 1. Break the entire script down into individual words with precise timestamps
     word_list = []
     for match in raw_matches:
         c_start = to_sec(match["start"])
@@ -175,7 +190,6 @@ def get_dynamic_captions(vtt_file, video_w, video_h):
             w_end = w_start + word_duration
             word_list.append({"word": word, "start": w_start, "end": w_end})
 
-    # 2. Group the words perfectly into chunks of 2
     clips = []
     chunk_size = 2 
     
@@ -186,19 +200,23 @@ def get_dynamic_captions(vtt_file, video_w, video_h):
         c_end = chunk[-1]["end"]
         
         text = " ".join([w["word"] for w in chunk])
-        clean_text = "".join([c for c in text if c.isalnum() or c in ".,!? "])
+        clean_text = "".join([c for c in text if c.isalnum() or c in ".,!? "]).strip()
         
-        if not clean_text.strip(): continue
+        if not clean_text: continue
         
         try:
-            # THE FIX: Added "\n" above and below to expand the bounding box, preventing cutoff.
+            # FIX: Switched back to 'fontsize' for 1.0.3 and added 'method=caption' 
+            # to safely bound the stroke from getting cut off.
             txt_clip = TextClip(
-                text=f"\n {clean_text.upper()} \n", 
-                font_size=90,
+                txt=clean_text.upper(), 
+                fontsize=95,
                 color='white',
                 font=font_path, 
                 stroke_color='black',
-                stroke_width=6
+                stroke_width=5,
+                method='caption',
+                align='center',
+                size=(video_w - 100, None)
             ).set_pos('center').set_start(c_start).set_duration(c_end - c_start)
             
             clips.append(txt_clip)
