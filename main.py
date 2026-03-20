@@ -162,33 +162,30 @@ def get_dynamic_captions(vtt_file, video_w, video_h):
         words = text.split()
         if not words: continue
         
-        # Chop the timeframe into perfectly equal pieces for each word
         word_duration = (c_end - c_start) / len(words)
         
         for idx, word in enumerate(words):
             clean_word = "".join([c for c in word if c.isalnum() or c in ".,!?"])
             if not clean_word: continue
             
-            # THE TIKTOK HIGHLIGHT EFFECT: Long words turn Yellow, short words stay White
             word_color = 'yellow' if len(clean_word) > 4 else 'white'
             w_start = c_start + (idx * word_duration)
             
             try:
+                # THE FIX: Removed 'method' and 'size' to prevent transparent text crashes
                 txt_clip = TextClip(
                     text=clean_word.upper(), 
-                    font_size=110, # Massive TikTok size
+                    font_size=110,
                     color=word_color,
                     font=font_path, 
                     stroke_color='black',
-                    stroke_width=8,
-                    method='caption',
-                    align='center',
-                    size=(video_w - 100, None)
+                    stroke_width=6
                 ).with_position('center').with_start(w_start).with_duration(word_duration)
                 
                 clips.append(txt_clip)
             except Exception as e:
-                pass
+                # Now it will actually yell at us in the logs if it fails!
+                print(f"⚠️ Failed to render word '{clean_word}': {e}")
         
     print(f"✅ Generated {len(clips)} fast-paced TikTok caption clips.")
     return clips
