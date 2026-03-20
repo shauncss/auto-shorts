@@ -5,7 +5,7 @@ import subprocess
 import requests
 from google import genai 
 from moviepy.editor import VideoFileClip, AudioFileClip, TextClip, CompositeVideoClip, ImageClip, ColorClip, concatenate_videoclips
-import moviepy.video.fx.all as vfx  # ADDED: This allows us to loop short videos
+import moviepy.video.fx.all as vfx 
 import googleapiclient.discovery
 from google.oauth2.credentials import Credentials
 from googleapiclient.http import MediaFileUpload
@@ -104,7 +104,7 @@ def generate_audio_and_subs(script_text):
     ])
 
 # ==========================================
-# 5. DYNAMIC CAPTION PARSER (TikTok / Hormozi Style)
+# 5. DYNAMIC CAPTION PARSER (2-Word Chunks)
 # ==========================================
 def get_dynamic_captions(vtt_file, video_w, video_h):
     with open(vtt_file, 'r', encoding='utf-8') as f:
@@ -149,9 +149,10 @@ def get_dynamic_captions(vtt_file, video_w, video_h):
         except Exception:
             return 0.0
 
-    clips = []
     font_path = os.path.abspath('Roboto-Bold.ttf') 
     
+    # 1. Break the entire script down into individual words with precise timestamps
+    word_list = []
     for match in raw_matches:
         c_start = to_sec(match["start"])
         c_end = to_sec(match["end"])
@@ -159,37 +160,47 @@ def get_dynamic_captions(vtt_file, video_w, video_h):
         if c_end <= c_start:
             c_end = c_start + 0.5 
             
-        text = match["text"]
-        words = text.split()
+        words = match["text"].split()
         if not words: continue
         
         word_duration = (c_end - c_start) / len(words)
         
         for idx, word in enumerate(words):
-            clean_word = "".join([c for c in word if c.isalnum() or c in ".,!?"])
-            if not clean_word: continue
-            
-            word_color = 'yellow' if len(clean_word) > 4 else 'white'
             w_start = c_start + (idx * word_duration)
-            
-            try:
-                # FIX 1: Added spaces and a newline (\n) to force the invisible boundary 
-                # box to expand downward, completely preventing the stroke from being cut off.
-                # Slightly reduced font size to 100 to ensure wide words stay on screen safely.
-                txt_clip = TextClip(
-                    text=f" {clean_word.upper()} \n", 
-                    font_size=100,
-                    color=word_color,
-                    font=font_path, 
-                    stroke_color='black',
-                    stroke_width=7
-                ).with_position('center').with_start(w_start).with_duration(word_duration)
-                
-                clips.append(txt_clip)
-            except Exception as e:
-                print(f"⚠️ Failed to render word '{clean_word}': {e}")
+            w_end = w_start + word_duration
+            word_list.append({"word": word, "start": w_start, "end": w_end})
+
+    # 2. Group the words perfectly into chunks of 2
+    clips = []
+    chunk_size = 2 
+    
+    for i in range(0, len(word_list), chunk_size):
+        chunk = word_list[i:i+chunk_size]
         
-    print(f"✅ Generated {len(clips)} fast-paced TikTok caption clips.")
+        c_start = chunk[0]["start"]
+        c_end = chunk[-1]["end"]
+        
+        text = " ".join([w["word"] for w in chunk])
+        clean_text = "".join([c for c in text if c.isalnum() or c in ".,!? "])
+        
+        if not clean_text.strip(): continue
+        
+        try:
+            # THE FIX: Added "\n" above and below to expand the bounding box, preventing cutoff.
+            txt_clip = TextClip(
+                text=f"\n {clean_text.upper()} \n", 
+                font_size=90,
+                color='white',
+                font=font_path, 
+                stroke_color='black',
+                stroke_width=6
+            ).set_pos('center').set_start(c_start).set_duration(c_end - c_start)
+            
+            clips.append(txt_clip)
+        except Exception as e:
+            print(f"⚠️ Failed to render caption block '{clean_text}': {e}")
+            
+    print(f"✅ Generated {len(clips)} fast-paced 2-word caption clips.")
     return clips
 
 # ==========================================
@@ -208,37 +219,35 @@ def edit_video(scenes):
     for i, scene in enumerate(scenes):
         img_path = f"scene_{i}.jpg" if os.path.exists(f"scene_{i}.jpg") else None
         if img_path:
-            img_clip = ImageClip(img_path).with_duration(segment_duration)
+            img_clip = ImageClip(img_path).set_duration(segment_duration)
             scale = max(W / img_clip.w, half_H / img_clip.h)
-            img_clip = img_clip.resized(scale)
-            img_clip = img_clip.cropped(x_center=img_clip.w/2, y_center=img_clip.h/2, width=W, height=half_H)
+            img_clip = img_clip.resize(scale)
+            img_clip = img_clip.crop(x_center=img_clip.w/2, y_center=img_clip.h/2, width=W, height=half_H)
         else:
-            img_clip = ColorClip(size=(W, half_H), color=(30, 30, 30)).with_duration(segment_duration)
+            img_clip = ColorClip(size=(W, half_H), color=(30, 30, 30)).set_duration(segment_duration)
         top_clips.append(img_clip)
         
-    top_half = concatenate_videoclips(top_clips).with_position(("center", "top"))
+    top_half = concatenate_videoclips(top_clips).set_pos(("center", "top"))
     
     video = VideoFileClip("brainrot.mp4", audio=False)
     scale = max(W / video.w, half_H / video.h)
-    video = video.resized(scale)
-    video = video.cropped(x_center=video.w/2, y_center=video.h/2, width=W, height=half_H)
+    video = video.resize(scale)
+    video = video.crop(x_center=video.w/2, y_center=video.h/2, width=W, height=half_H)
     
     safety_buffer = 15
     max_start_time = video.duration - audio.duration - safety_buffer
     
     if max_start_time > 0:
         random_start = random.uniform(0, max_start_time)
-        bottom_half = video.subclipped(random_start, random_start + audio.duration)
+        bottom_half = video.subclip(random_start, random_start + audio.duration)
     else:
-        # FIX 2: If the Dropbox download failed partially and is shorter than our audio,
-        # we force the video clip to loop so it never leaves a black screen!
-        bottom_half = video.subclipped(0, video.duration)
+        bottom_half = video.subclip(0, video.duration)
         bottom_half = bottom_half.fx(vfx.loop, duration=audio.duration)
 
-    bottom_half = bottom_half.with_position(("center", "bottom"))
+    bottom_half = bottom_half.set_pos(("center", "bottom"))
     
-    bg_canvas = ColorClip(size=(W, H), color=(0,0,0)).with_duration(audio.duration)
-    bg_canvas = bg_canvas.with_audio(audio)
+    bg_canvas = ColorClip(size=(W, H), color=(0,0,0)).set_duration(audio.duration)
+    bg_canvas = bg_canvas.set_audio(audio)
     
     caption_clips = get_dynamic_captions("subs.vtt", W, H)
     
