@@ -5,7 +5,7 @@ import subprocess
 import requests
 from google import genai 
 from moviepy import VideoFileClip, AudioFileClip, TextClip, CompositeVideoClip, ImageClip, ColorClip, concatenate_videoclips
-import moviepy.video.fx.all as vfx  # ADDED: This allows us to loop short videos
+from moviepy.editor import VideoFileClip, AudioFileClip, TextClip, CompositeVideoClip, ImageClip, ColorClip, concatenate_videoclips
 import googleapiclient.discovery
 from google.oauth2.credentials import Credentials
 from googleapiclient.http import MediaFileUpload
