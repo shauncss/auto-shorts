@@ -5,6 +5,7 @@ import subprocess
 import requests
 from google import genai 
 from moviepy import VideoFileClip, AudioFileClip, TextClip, CompositeVideoClip, ImageClip, ColorClip, concatenate_videoclips
+import moviepy.video.fx.all as vfx  # ADDED: This allows us to loop short videos
 import googleapiclient.discovery
 from google.oauth2.credentials import Credentials
 from googleapiclient.http import MediaFileUpload
@@ -172,19 +173,20 @@ def get_dynamic_captions(vtt_file, video_w, video_h):
             w_start = c_start + (idx * word_duration)
             
             try:
-                # THE FIX: Removed 'method' and 'size' to prevent transparent text crashes
+                # FIX 1: Added spaces and a newline (\n) to force the invisible boundary 
+                # box to expand downward, completely preventing the stroke from being cut off.
+                # Slightly reduced font size to 100 to ensure wide words stay on screen safely.
                 txt_clip = TextClip(
-                    text=clean_word.upper(), 
-                    font_size=110,
+                    text=f" {clean_word.upper()} \n", 
+                    font_size=100,
                     color=word_color,
                     font=font_path, 
                     stroke_color='black',
-                    stroke_width=6
+                    stroke_width=7
                 ).with_position('center').with_start(w_start).with_duration(word_duration)
                 
                 clips.append(txt_clip)
             except Exception as e:
-                # Now it will actually yell at us in the logs if it fails!
                 print(f"⚠️ Failed to render word '{clean_word}': {e}")
         
     print(f"✅ Generated {len(clips)} fast-paced TikTok caption clips.")
@@ -228,7 +230,10 @@ def edit_video(scenes):
         random_start = random.uniform(0, max_start_time)
         bottom_half = video.subclipped(random_start, random_start + audio.duration)
     else:
+        # FIX 2: If the Dropbox download failed partially and is shorter than our audio,
+        # we force the video clip to loop so it never leaves a black screen!
         bottom_half = video.subclipped(0, video.duration)
+        bottom_half = bottom_half.fx(vfx.loop, duration=audio.duration)
 
     bottom_half = bottom_half.with_position(("center", "bottom"))
     
@@ -242,7 +247,7 @@ def edit_video(scenes):
     final_video.write_videofile(
         "final_short.mp4", 
         fps=30, 
-        preset="ultrafast", 
+        preset="fast", 
         threads=4,
         logger=None
     )
