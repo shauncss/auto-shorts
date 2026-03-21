@@ -39,9 +39,9 @@ jobs:
           echo "Selecting a random video from the Dropbox pool..."
           
           LINKS=(
-            "https://www.dropbox.com/scl/fi/gkc4ic16jzeba1qlym9pj/Subway-Surfers-Gameplay-No-Copyright-Vertical-OrbitalNCG-1080p-h264-youtube.mp4?rlkey=gnbc8wyv7mbt3jl20ott5se2a&st=cy2f0r1z&dl=1"
-            "https://www.dropbox.com/scl/fi/vmnb2wlyyvsv5cqlhn1ml/Minecraft-Parkour-Gameplay-NO-COPYRIGHT-Vertical-Orbital-No-Copyright-Gameplay-1080p-h264-youtube.mp4?rlkey=5fzc7yhrkv1pzb67ixsjtgvw4&st=gslb8oi0&dl=1"
-            "https://www.dropbox.com/scl/fi/m0gmnzczxmvh3jknhdn6p/GTA-5-Gameplay-No-Copyright-Mega-Ramp-Vertical-OrbitalNCG-1080p-h264-youtube.mp4?rlkey=twa4eyjcsddvjartfqj6h6m7q&st=bf2wojvn&dl=1"
+            "https://dl.dropboxusercontent.com/scl/fi/gkc4ic16jzeba1qlym9pj/Subway-Surfers-Gameplay-No-Copyright-Vertical-OrbitalNCG-1080p-h264-youtube.mp4?rlkey=gnbc8wyv7mbt3jl20ott5se2a&st=cy2f0r1z&dl=1"
+            "https://dl.dropboxusercontent.com/scl/fi/vmnb2wlyyvsv5cqlhn1ml/Minecraft-Parkour-Gameplay-NO-COPYRIGHT-Vertical-Orbital-No-Copyright-Gameplay-1080p-h264-youtube.mp4?rlkey=5fzc7yhrkv1pzb67ixsjtgvw4&st=gslb8oi0&dl=1"
+            "https://dl.dropboxusercontent.com/scl/fi/m0gmnzczxmvh3jknhdn6p/GTA-5-Gameplay-No-Copyright-Mega-Ramp-Vertical-OrbitalNCG-1080p-h264-youtube.mp4?rlkey=twa4eyjcsddvjartfqj6h6m7q&st=bf2wojvn&dl=1"
           )
           
           SELECTED_LINK=${LINKS[$RANDOM % ${#LINKS[@]}]}
