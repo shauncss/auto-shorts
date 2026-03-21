@@ -232,20 +232,23 @@ def edit_video(scenes):
     audio = AudioFileClip("voice.mp3")
     segment_duration = audio.duration / len(scenes)
     
+    # THE FIX: Bypassing the buggy concatenate engine entirely.
+    # We now assign exact start times to each image so they physically cannot disappear.
     top_clips = []
+    start_t = 0
     for i, scene in enumerate(scenes):
         img_path = f"scene_{i}.jpg" if os.path.exists(f"scene_{i}.jpg") else None
         if img_path:
-            img_clip = ImageClip(img_path).set_duration(segment_duration).set_fps(30)
+            img_clip = ImageClip(img_path).set_duration(segment_duration)
             scale = max(W / img_clip.w, half_H / img_clip.h)
             img_clip = img_clip.resize(scale).crop(x_center=img_clip.w/2, y_center=img_clip.h/2, width=W, height=half_H)
         else:
-            img_clip = ColorClip(size=(W, half_H), color=(30, 30, 30)).set_duration(segment_duration).set_fps(30)
+            img_clip = ColorClip(size=(W, half_H), color=(30, 30, 30)).set_duration(segment_duration)
+            
+        img_clip = img_clip.set_start(start_t).set_pos(("center", "top"))
         top_clips.append(img_clip)
+        start_t += segment_duration
         
-    # THE FIX: Removed method="compose" (stops the crash) but kept set_fps (keeps it visible)
-    top_half = concatenate_videoclips(top_clips).set_pos(("center", "top"))
-    
     try:
         video = VideoFileClip("brainrot.mp4", audio=False)
         scale = max(W / video.w, half_H / video.h)
@@ -261,15 +264,21 @@ def edit_video(scenes):
             bottom_half = video.subclip(0, video.duration).fx(vfx.loop, duration=audio.duration)
     except Exception as e:
         print(f"⚠️ Dropbox blocked the background video ({e}). Using sleek dark fallback!")
-        bottom_half = ColorClip(size=(W, half_H), color=(20, 20, 20)).set_duration(audio.duration).set_fps(30)
+        bottom_half = ColorClip(size=(W, half_H), color=(20, 20, 20)).set_duration(audio.duration)
 
-    bottom_half = bottom_half.set_pos(("center", "bottom"))
+    bottom_half = bottom_half.set_start(0).set_pos(("center", "bottom"))
     
-    bg_canvas = ColorClip(size=(W, H), color=(0,0,0)).set_duration(audio.duration).set_audio(audio).set_fps(30)
+    # Create the master canvas
+    bg_canvas = ColorClip(size=(W, H), color=(0,0,0)).set_duration(audio.duration).set_fps(30)
     
     caption_clips = get_dynamic_captions("subs.vtt", W, H)
     
-    final_video = CompositeVideoClip([bg_canvas, top_half, bottom_half] + caption_clips)
+    # Stack the timeline manually: Background -> Top Images -> Gameplay -> Captions
+    final_clips = [bg_canvas] + top_clips + [bottom_half] + caption_clips
+    
+    final_video = CompositeVideoClip(final_clips)
+    final_video = final_video.set_audio(audio) # Safely bind audio to the final product
+    
     final_video.write_videofile("final_short.mp4", fps=30, preset="fast", threads=4, logger=None)
     
     final_video.close()
