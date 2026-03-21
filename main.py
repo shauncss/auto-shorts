@@ -14,7 +14,6 @@ if not hasattr(PIL.Image, 'ANTIALIAS'):
 # ================================
 
 from google import genai 
-# Removed the buggy concatenation tools entirely
 from moviepy.editor import VideoFileClip, AudioFileClip, TextClip, CompositeVideoClip, ImageClip, ColorClip
 import moviepy.video.fx.all as vfx 
 import googleapiclient.discovery
@@ -226,8 +225,6 @@ def edit_video(scenes):
         
         if img_path:
             try:
-                # THE FIX: Mathematically slice and crop the image into a perfect 1080x960 
-                # block BEFORE MoviePy ever touches it.
                 with PIL.Image.open(img_path) as img:
                     scale = max(W / img.width, half_H / img.height)
                     new_w, new_h = int(img.width * scale), int(img.height * scale)
@@ -239,16 +236,13 @@ def edit_video(scenes):
                         
                     img = img.resize((new_w, new_h), resample_filter)
                     
-                    # Exact center crop
                     left = (new_w - W) / 2
                     top = (new_h - half_H) / 2
                     img = img.crop((left, top, left + W, top + half_H))
                     
-                    # Force it into a solid, un-transparent block
                     img = img.convert("RGB")
                     img.save(prep_path, "JPEG")
                 
-                # MoviePy just loads the perfect block, zero math required.
                 img_clip = ImageClip(prep_path).set_start(start_t).set_duration(segment_duration).set_pos(("center", "top"))
             except Exception as e:
                 print(f"⚠️ Pillow processing failed for image {i}: {e}")
@@ -280,7 +274,9 @@ def edit_video(scenes):
     
     bg_canvas = ColorClip(size=(W, H), color=(0,0,0)).set_duration(audio.duration)
     
-    # Forcefully stack every single layer in exact order
+    # THE FIX: Bring the caption generator back from the void!
+    caption_clips = get_dynamic_captions("subs.vtt", W, H)
+    
     final_video = CompositeVideoClip([bg_canvas] + top_clips + [bottom_half] + caption_clips)
     final_video = final_video.set_audio(audio)
     
@@ -329,7 +325,6 @@ if __name__ == "__main__":
         edit_video(content["scenes"])
         upload_to_youtube(content["title"], content["description"])
         
-        # Cleanup
         try:
             os.remove("voice.mp3")
             os.remove("subs.vtt")
