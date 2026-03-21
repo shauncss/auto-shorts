@@ -14,8 +14,8 @@ if not hasattr(PIL.Image, 'ANTIALIAS'):
 # ================================
 
 from google import genai 
-# THE FIX: Added ImageSequenceClip to forcefully compile the images into a video track
-from moviepy.editor import VideoFileClip, AudioFileClip, TextClip, CompositeVideoClip, ImageClip, ColorClip, ImageSequenceClip
+# Removed the buggy concatenation tools entirely
+from moviepy.editor import VideoFileClip, AudioFileClip, TextClip, CompositeVideoClip, ImageClip, ColorClip
 import moviepy.video.fx.all as vfx 
 import googleapiclient.discovery
 from google.oauth2.credentials import Credentials
@@ -206,10 +206,10 @@ def get_dynamic_captions(vtt_file, video_w, video_h):
     return clips
 
 # ==========================================
-# 6. THE EDITOR: THE RAW PIXEL BYPASS
+# 6. THE EDITOR: THE SILVER BULLET BYPASS
 # ==========================================
 def edit_video(scenes):
-    print("🎬 Assembling Split-Screen Video using Raw Pixel Extraction...")
+    print("🎬 Assembling Split-Screen Video using strict Pillow sizing...")
     
     W, H = 1080, 1920
     half_H = 960
@@ -217,26 +217,48 @@ def edit_video(scenes):
     audio = AudioFileClip("voice.mp3")
     segment_duration = audio.duration / len(scenes)
     
-    # THE FIX: We pull the raw RGB data out of the image so MoviePy CANNOT hide it.
-    frames = []
+    top_clips = []
+    start_t = 0
+    
     for i, scene in enumerate(scenes):
         img_path = f"scene_{i}.jpg" if os.path.exists(f"scene_{i}.jpg") else None
+        prep_path = f"prep_{i}.jpg"
+        
         if img_path:
             try:
-                img_clip = ImageClip(img_path)
-                scale = max(W / img_clip.w, half_H / img_clip.h)
-                img_clip = img_clip.resize(scale).crop(x_center=img_clip.w/2, y_center=img_clip.h/2, width=W, height=half_H)
-                frames.append(img_clip.get_frame(0)) # Extract pure pixel array
+                # THE FIX: Mathematically slice and crop the image into a perfect 1080x960 
+                # block BEFORE MoviePy ever touches it.
+                with PIL.Image.open(img_path) as img:
+                    scale = max(W / img.width, half_H / img.height)
+                    new_w, new_h = int(img.width * scale), int(img.height * scale)
+                    
+                    try:
+                        resample_filter = PIL.Image.Resampling.LANCZOS
+                    except AttributeError:
+                        resample_filter = PIL.Image.LANCZOS
+                        
+                    img = img.resize((new_w, new_h), resample_filter)
+                    
+                    # Exact center crop
+                    left = (new_w - W) / 2
+                    top = (new_h - half_H) / 2
+                    img = img.crop((left, top, left + W, top + half_H))
+                    
+                    # Force it into a solid, un-transparent block
+                    img = img.convert("RGB")
+                    img.save(prep_path, "JPEG")
+                
+                # MoviePy just loads the perfect block, zero math required.
+                img_clip = ImageClip(prep_path).set_start(start_t).set_duration(segment_duration).set_pos(("center", "top"))
             except Exception as e:
-                print(f"⚠️ Failed to process image {i}: {e}")
-                frames.append(ColorClip(size=(W, half_H), color=(40, 40, 40)).get_frame(0))
+                print(f"⚠️ Pillow processing failed for image {i}: {e}")
+                img_clip = ColorClip(size=(W, half_H), color=(30, 30, 30)).set_start(start_t).set_duration(segment_duration).set_pos(("center", "top"))
         else:
-            frames.append(ColorClip(size=(W, half_H), color=(20, 20, 20)).get_frame(0))
+            img_clip = ColorClip(size=(W, half_H), color=(20, 20, 20)).set_start(start_t).set_duration(segment_duration).set_pos(("center", "top"))
             
-    # Weld the pixel arrays into an unbreakable video sequence
-    durations = [segment_duration] * len(frames)
-    top_half = ImageSequenceClip(frames, durations=durations).set_pos(("center", "top"))
-    
+        top_clips.append(img_clip)
+        start_t += segment_duration
+        
     try:
         video = VideoFileClip("brainrot.mp4", audio=False)
         scale = max(W / video.w, half_H / video.h)
@@ -251,17 +273,16 @@ def edit_video(scenes):
         else:
             bottom_half = video.subclip(0, video.duration).fx(vfx.loop, duration=audio.duration)
     except Exception as e:
-        print(f"⚠️ Dropbox blocked the background video ({e}). Using sleek dark fallback!")
+        print(f"⚠️ Gameplay video failed ({e}). Using sleek dark fallback!")
         bottom_half = ColorClip(size=(W, half_H), color=(20, 20, 20)).set_duration(audio.duration)
 
-    bottom_half = bottom_half.set_pos(("center", "bottom"))
+    bottom_half = bottom_half.set_start(0).set_pos(("center", "bottom"))
     
     bg_canvas = ColorClip(size=(W, H), color=(0,0,0)).set_duration(audio.duration)
     
-    caption_clips = get_dynamic_captions("subs.vtt", W, H)
-    
-    final_video = CompositeVideoClip([bg_canvas, top_half, bottom_half] + caption_clips)
-    final_video = final_video.set_audio(audio).set_duration(audio.duration)
+    # Forcefully stack every single layer in exact order
+    final_video = CompositeVideoClip([bg_canvas] + top_clips + [bottom_half] + caption_clips)
+    final_video = final_video.set_audio(audio)
     
     final_video.write_videofile("final_short.mp4", fps=30, preset="fast", threads=4, logger=None)
     
@@ -308,12 +329,14 @@ if __name__ == "__main__":
         edit_video(content["scenes"])
         upload_to_youtube(content["title"], content["description"])
         
+        # Cleanup
         try:
             os.remove("voice.mp3")
             os.remove("subs.vtt")
             os.remove("brainrot.mp4")
             for i in range(len(content["scenes"])):
                 if os.path.exists(f"scene_{i}.jpg"): os.remove(f"scene_{i}.jpg")
+                if os.path.exists(f"prep_{i}.jpg"): os.remove(f"prep_{i}.jpg")
         except PermissionError:
             pass
     except Exception as e:
