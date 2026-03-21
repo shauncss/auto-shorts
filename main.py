@@ -14,7 +14,8 @@ if not hasattr(PIL.Image, 'ANTIALIAS'):
 # ================================
 
 from google import genai 
-from moviepy.editor import VideoFileClip, AudioFileClip, TextClip, CompositeVideoClip, ImageClip, ColorClip, concatenate_videoclips
+# THE FIX: Added ImageSequenceClip to forcefully compile the images into a video track
+from moviepy.editor import VideoFileClip, AudioFileClip, TextClip, CompositeVideoClip, ImageClip, ColorClip, ImageSequenceClip
 import moviepy.video.fx.all as vfx 
 import googleapiclient.discovery
 from google.oauth2.credentials import Credentials
@@ -123,7 +124,7 @@ def generate_audio_and_subs(script_text):
     ])
 
 # ==========================================
-# 5. DYNAMIC CAPTION PARSER (Two-Layer Trick)
+# 5. DYNAMIC CAPTION PARSER
 # ==========================================
 def get_dynamic_captions(vtt_file, video_w, video_h):
     with open(vtt_file, 'r', encoding='utf-8') as f:
@@ -190,41 +191,25 @@ def get_dynamic_captions(vtt_file, video_w, video_h):
         if not clean_text: continue
         
         try:
-            txt_bg = TextClip(
-                txt=clean_text, 
-                fontsize=95,
-                color='black',
-                font=font_path, 
-                stroke_color='black',
-                stroke_width=12
-            ).set_pos('center')
+            txt_bg = TextClip(txt=clean_text, fontsize=95, color='black', font=font_path, stroke_color='black', stroke_width=12).set_pos('center')
+            txt_fg = TextClip(txt=clean_text, fontsize=95, color='white', font=font_path).set_pos('center')
             
-            txt_fg = TextClip(
-                txt=clean_text, 
-                fontsize=95,
-                color='white',
-                font=font_path
-            ).set_pos('center')
-            
-            # FAILSAFE: If the text engine returns an empty bounding box, skip it safely!
-            if getattr(txt_bg, 'w', 0) == 0 or getattr(txt_bg, 'h', 0) == 0:
-                continue
+            if getattr(txt_bg, 'w', 0) == 0 or getattr(txt_bg, 'h', 0) == 0: continue
                 
             combo_clip = CompositeVideoClip([txt_bg, txt_fg], size=txt_bg.size)
             combo_clip = combo_clip.set_pos('center').set_start(c_start).set_duration(c_end - c_start)
-            
             clips.append(combo_clip)
         except Exception as e:
-            print(f"⚠️ Failed to render caption block '{clean_text}': {e}")
+            pass
             
     print(f"✅ Generated {len(clips)} perfectly styled caption clips.")
     return clips
 
 # ==========================================
-# 6. THE EDITOR: SPLIT SCREEN ASSEMBLE
+# 6. THE EDITOR: THE RAW PIXEL BYPASS
 # ==========================================
 def edit_video(scenes):
-    print("🎬 Assembling Split-Screen Video...")
+    print("🎬 Assembling Split-Screen Video using Raw Pixel Extraction...")
     
     W, H = 1080, 1920
     half_H = 960
@@ -232,23 +217,26 @@ def edit_video(scenes):
     audio = AudioFileClip("voice.mp3")
     segment_duration = audio.duration / len(scenes)
     
-    # THE FIX: Bypassing the buggy concatenate engine entirely.
-    # We now assign exact start times to each image so they physically cannot disappear.
-    top_clips = []
-    start_t = 0
+    # THE FIX: We pull the raw RGB data out of the image so MoviePy CANNOT hide it.
+    frames = []
     for i, scene in enumerate(scenes):
         img_path = f"scene_{i}.jpg" if os.path.exists(f"scene_{i}.jpg") else None
         if img_path:
-            img_clip = ImageClip(img_path).set_duration(segment_duration)
-            scale = max(W / img_clip.w, half_H / img_clip.h)
-            img_clip = img_clip.resize(scale).crop(x_center=img_clip.w/2, y_center=img_clip.h/2, width=W, height=half_H)
+            try:
+                img_clip = ImageClip(img_path)
+                scale = max(W / img_clip.w, half_H / img_clip.h)
+                img_clip = img_clip.resize(scale).crop(x_center=img_clip.w/2, y_center=img_clip.h/2, width=W, height=half_H)
+                frames.append(img_clip.get_frame(0)) # Extract pure pixel array
+            except Exception as e:
+                print(f"⚠️ Failed to process image {i}: {e}")
+                frames.append(ColorClip(size=(W, half_H), color=(40, 40, 40)).get_frame(0))
         else:
-            img_clip = ColorClip(size=(W, half_H), color=(30, 30, 30)).set_duration(segment_duration)
+            frames.append(ColorClip(size=(W, half_H), color=(20, 20, 20)).get_frame(0))
             
-        img_clip = img_clip.set_start(start_t).set_pos(("center", "top"))
-        top_clips.append(img_clip)
-        start_t += segment_duration
-        
+    # Weld the pixel arrays into an unbreakable video sequence
+    durations = [segment_duration] * len(frames)
+    top_half = ImageSequenceClip(frames, durations=durations).set_pos(("center", "top"))
+    
     try:
         video = VideoFileClip("brainrot.mp4", audio=False)
         scale = max(W / video.w, half_H / video.h)
@@ -266,18 +254,14 @@ def edit_video(scenes):
         print(f"⚠️ Dropbox blocked the background video ({e}). Using sleek dark fallback!")
         bottom_half = ColorClip(size=(W, half_H), color=(20, 20, 20)).set_duration(audio.duration)
 
-    bottom_half = bottom_half.set_start(0).set_pos(("center", "bottom"))
+    bottom_half = bottom_half.set_pos(("center", "bottom"))
     
-    # Create the master canvas
-    bg_canvas = ColorClip(size=(W, H), color=(0,0,0)).set_duration(audio.duration).set_fps(30)
+    bg_canvas = ColorClip(size=(W, H), color=(0,0,0)).set_duration(audio.duration)
     
     caption_clips = get_dynamic_captions("subs.vtt", W, H)
     
-    # Stack the timeline manually: Background -> Top Images -> Gameplay -> Captions
-    final_clips = [bg_canvas] + top_clips + [bottom_half] + caption_clips
-    
-    final_video = CompositeVideoClip(final_clips)
-    final_video = final_video.set_audio(audio) # Safely bind audio to the final product
+    final_video = CompositeVideoClip([bg_canvas, top_half, bottom_half] + caption_clips)
+    final_video = final_video.set_audio(audio).set_duration(audio.duration)
     
     final_video.write_videofile("final_short.mp4", fps=30, preset="fast", threads=4, logger=None)
     
