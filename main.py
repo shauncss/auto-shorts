@@ -190,8 +190,6 @@ def get_dynamic_captions(vtt_file, video_w, video_h):
         if not clean_text: continue
         
         try:
-            # THE FIX: The Two-Layer Text Trick. 
-            # Layer 1: A massive fat black stroke.
             txt_bg = TextClip(
                 txt=clean_text, 
                 fontsize=95,
@@ -201,7 +199,6 @@ def get_dynamic_captions(vtt_file, video_w, video_h):
                 stroke_width=12
             ).set_pos('center')
             
-            # Layer 2: A perfectly crisp white core overlaid on top.
             txt_fg = TextClip(
                 txt=clean_text, 
                 fontsize=95,
@@ -209,7 +206,10 @@ def get_dynamic_captions(vtt_file, video_w, video_h):
                 font=font_path
             ).set_pos('center')
             
-            # Combine them into a single, gorgeous element
+            # FAILSAFE: If the text engine returns an empty bounding box, skip it safely!
+            if getattr(txt_bg, 'w', 0) == 0 or getattr(txt_bg, 'h', 0) == 0:
+                continue
+                
             combo_clip = CompositeVideoClip([txt_bg, txt_fg], size=txt_bg.size)
             combo_clip = combo_clip.set_pos('center').set_start(c_start).set_duration(c_end - c_start)
             
@@ -236,7 +236,6 @@ def edit_video(scenes):
     for i, scene in enumerate(scenes):
         img_path = f"scene_{i}.jpg" if os.path.exists(f"scene_{i}.jpg") else None
         if img_path:
-            # THE FIX: Added .set_fps(30) so MoviePy doesn't render the image invisibly!
             img_clip = ImageClip(img_path).set_duration(segment_duration).set_fps(30)
             scale = max(W / img_clip.w, half_H / img_clip.h)
             img_clip = img_clip.resize(scale).crop(x_center=img_clip.w/2, y_center=img_clip.h/2, width=W, height=half_H)
@@ -244,8 +243,8 @@ def edit_video(scenes):
             img_clip = ColorClip(size=(W, half_H), color=(30, 30, 30)).set_duration(segment_duration).set_fps(30)
         top_clips.append(img_clip)
         
-    # THE FIX: Added method="compose" to safely stitch the images without dropping frames
-    top_half = concatenate_videoclips(top_clips, method="compose").set_pos(("center", "top"))
+    # THE FIX: Removed method="compose" (stops the crash) but kept set_fps (keeps it visible)
+    top_half = concatenate_videoclips(top_clips).set_pos(("center", "top"))
     
     try:
         video = VideoFileClip("brainrot.mp4", audio=False)
