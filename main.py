@@ -5,10 +5,13 @@ import subprocess
 import requests
 
 # === THE MOVIEPY/PILLOW PATCH ===
-# This tricks MoviePy 1.0.3 into working with modern Pillow!
+# This tricks MoviePy 1.0.3 into working perfectly with modern Pillow
 import PIL.Image
 if not hasattr(PIL.Image, 'ANTIALIAS'):
-    PIL.Image.ANTIALIAS = PIL.Image.Resampling.LANCZOS
+    try:
+        PIL.Image.ANTIALIAS = PIL.Image.Resampling.LANCZOS
+    except AttributeError:
+        PIL.Image.ANTIALIAS = PIL.Image.LANCZOS
 # ================================
 
 from google import genai 
@@ -67,7 +70,7 @@ def generate_content():
         "title": "Catchy title",
         "description": "Short description #shorts",
         "scenes": [
-            {{"text": "Hook text...", "search": "2-3 word LITERAL visual description (e.g., 'man running fast')"}},
+            {{"text": "Hook text...", "search": "2-3 word LITERAL visual description (e.g., 'man running fast', 'exploding volcano')"}},
             {{"text": "Build-up text...", "search": "2-3 word LITERAL visual description (e.g., 'hacker typing dark')"}},
             {{"text": "Twist text...", "search": "2-3 word LITERAL visual description (e.g., 'ancient roman sword')"}},
             {{"text": "Payoff text...", "search": "2-3 word LITERAL visual description (e.g., 'scientist laboratory')"}},
@@ -205,8 +208,6 @@ def get_dynamic_captions(vtt_file, video_w, video_h):
         if not clean_text: continue
         
         try:
-            # FIX: Switched back to 'fontsize' for 1.0.3 and added 'method=caption' 
-            # to safely bound the stroke from getting cut off.
             txt_clip = TextClip(
                 txt=clean_text.upper(), 
                 fontsize=95,

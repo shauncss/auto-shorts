@@ -31,33 +31,31 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends tzdata imagemagick ffmpeg nodejs fonts-dejavu
-          # Completely remove ImageMagick restrictions so TextClip ALWAYS works
           sudo rm -f /etc/ImageMagick-6/policy.xml
 
       - name: Download Random Background Video from Dropbox
         run: |
           echo "Selecting a random video from the Dropbox pool..."
           
+          # Use dl.dropboxusercontent.com to force raw MP4 downloads and bypass blocks
           LINKS=(
-            "https://dl.dropboxusercontent.com/scl/fi/gkc4ic16jzeba1qlym9pj/Subway-Surfers-Gameplay-No-Copyright-Vertical-OrbitalNCG-1080p-h264-youtube.mp4?rlkey=gnbc8wyv7mbt3jl20ott5se2a&st=cy2f0r1z&dl=1"
-            "https://dl.dropboxusercontent.com/scl/fi/vmnb2wlyyvsv5cqlhn1ml/Minecraft-Parkour-Gameplay-NO-COPYRIGHT-Vertical-Orbital-No-Copyright-Gameplay-1080p-h264-youtube.mp4?rlkey=5fzc7yhrkv1pzb67ixsjtgvw4&st=gslb8oi0&dl=1"
-            "https://dl.dropboxusercontent.com/scl/fi/m0gmnzczxmvh3jknhdn6p/GTA-5-Gameplay-No-Copyright-Mega-Ramp-Vertical-OrbitalNCG-1080p-h264-youtube.mp4?rlkey=twa4eyjcsddvjartfqj6h6m7q&st=bf2wojvn&dl=1"
+            "https://dl.dropboxusercontent.com/scl/fi/gkc4ic16jzeba1qlym9pj/Subway-Surfers-Gameplay-No-Copyright-Vertical-OrbitalNCG-1080p-h264-youtube.mp4?rlkey=gnbc8wyv7mbt3jl20ott5se2a"
+            "https://dl.dropboxusercontent.com/scl/fi/vmnb2wlyyvsv5cqlhn1ml/Minecraft-Parkour-Gameplay-NO-COPYRIGHT-Vertical-Orbital-No-Copyright-Gameplay-1080p-h264-youtube.mp4?rlkey=5fzc7yhrkv1pzb67ixsjtgvw4"
+            "https://dl.dropboxusercontent.com/scl/fi/m0gmnzczxmvh3jknhdn6p/GTA-5-Gameplay-No-Copyright-Mega-Ramp-Vertical-OrbitalNCG-1080p-h264-youtube.mp4?rlkey=twa4eyjcsddvjartfqj6h6m7q"
           )
           
           SELECTED_LINK=${LINKS[$RANDOM % ${#LINKS[@]}]}
           echo "Downloading the selected video..."
-
+          
           curl -L -o brainrot.mp4 "$SELECTED_LINK"
           
-
           FILESIZE=$(stat -c%s "brainrot.mp4")
-          if [ $FILESIZE -lt 1000000 ]; then echo "❌ ERROR: Downloaded an HTML page instead of a video. Check your links!"; exit 1; fi
+          if [ $FILESIZE -lt 1000000 ]; then echo "❌ ERROR: Downloaded HTML instead of video!"; exit 1; fi
 
       - name: Install Python Dependencies
         run: |
           python -m pip install --upgrade pip
-          # We only pin moviepy now. Pillow will install the latest version.
-          pip install google-genai requests "moviepy==1.0.3" edge-tts google-api-python-client google-auth-httplib2 google-auth-oauthlib
+          pip install google-genai requests "moviepy==1.0.3" edge-tts google-api-python-client google-auth-httplib2 google-auth-oauthlib 
 
       - name: Reconstruct Secure Credentials
         run: |
