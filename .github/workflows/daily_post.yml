@@ -37,7 +37,6 @@ jobs:
         run: |
           echo "Selecting a random video from the Dropbox pool..."
           
-          # Use dl.dropboxusercontent.com to force raw MP4 downloads and bypass blocks
           LINKS=(
             "https://dl.dropboxusercontent.com/scl/fi/gkc4ic16jzeba1qlym9pj/Subway-Surfers-Gameplay-No-Copyright-Vertical-OrbitalNCG-1080p-h264-youtube.mp4?rlkey=gnbc8wyv7mbt3jl20ott5se2a"
             "https://dl.dropboxusercontent.com/scl/fi/vmnb2wlyyvsv5cqlhn1ml/Minecraft-Parkour-Gameplay-NO-COPYRIGHT-Vertical-Orbital-No-Copyright-Gameplay-1080p-h264-youtube.mp4?rlkey=5fzc7yhrkv1pzb67ixsjtgvw4"
@@ -47,7 +46,8 @@ jobs:
           SELECTED_LINK=${LINKS[$RANDOM % ${#LINKS[@]}]}
           echo "Downloading the selected video..."
           
-          curl -L -o brainrot.mp4 "$SELECTED_LINK"
+          # THE FIX: Disguise the bot as Google Chrome to prevent Dropbox from blocking the download!
+          curl -L -A "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36" -o brainrot.mp4 "$SELECTED_LINK"
           
           FILESIZE=$(stat -c%s "brainrot.mp4")
           if [ $FILESIZE -lt 1000000 ]; then echo "❌ ERROR: Downloaded HTML instead of video!"; exit 1; fi

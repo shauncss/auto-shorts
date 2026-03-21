@@ -5,7 +5,6 @@ import subprocess
 import requests
 
 # === THE MOVIEPY/PILLOW PATCH ===
-# This tricks MoviePy 1.0.3 into working perfectly with modern Pillow
 import PIL.Image
 if not hasattr(PIL.Image, 'ANTIALIAS'):
     try:
@@ -45,7 +44,6 @@ VIRAL_THEMES = [
 
 def generate_content():
     print("🧠 Generating highly engaging script with Gemini...")
-    
     if CUSTOM_IDEA:
         topic_prompt = f"Write about this specific idea: {CUSTOM_IDEA}."
     else:
@@ -90,7 +88,6 @@ def generate_content():
 # ==========================================
 def fetch_pexels_image(query, index):
     if not PEXELS_API_KEY:
-        print("⚠️ No Pexels API Key found! Skipping image fetch.")
         return None
         
     print(f"🖼️ Fetching image for scene {index+1}: '{query}'")
@@ -107,8 +104,6 @@ def fetch_pexels_image(query, index):
             with open(filename, "wb") as f:
                 f.write(img_data)
             return filename
-        else:
-            print(f"⚠️ No Pexels results found for '{query}'.")
     except Exception as e:
         print(f"⚠️ Failed to fetch image for '{query}': {e}")
     return None
@@ -128,16 +123,14 @@ def generate_audio_and_subs(script_text):
     ])
 
 # ==========================================
-# 5. DYNAMIC CAPTION PARSER (2-Word Chunks)
+# 5. DYNAMIC CAPTION PARSER (Two-Layer Trick)
 # ==========================================
 def get_dynamic_captions(vtt_file, video_w, video_h):
     with open(vtt_file, 'r', encoding='utf-8') as f:
         lines = f.readlines()
         
     raw_matches = []
-    start_t = None
-    end_t = None
-    text_buffer = []
+    start_t, end_t, text_buffer = None, None, []
     
     for line in lines:
         line = line.strip()
@@ -145,8 +138,7 @@ def get_dynamic_captions(vtt_file, video_w, video_h):
             if start_t and end_t and text_buffer:
                 raw_matches.append({"start": start_t, "end": end_t, "text": " ".join(text_buffer)})
             parts = line.split('-->')
-            start_t = parts[0].strip()
-            end_t = parts[1].strip()
+            start_t, end_t = parts[0].strip(), parts[1].strip()
             text_buffer = []
         elif line and not line.isdigit() and line != "WEBVTT":
             text_buffer.append(line)
@@ -158,73 +150,74 @@ def get_dynamic_captions(vtt_file, video_w, video_h):
         try:
             t_str = t_str.replace(',', '.')
             parts = t_str.split(':')
-            if len(parts) == 3:
-                h, m, s = parts
-            elif len(parts) == 2:
-                h, m, s = 0, parts[0], parts[1]
-            else:
-                h, m, s = 0, 0, parts[0]
-                
-            if '.' in s:
-                s, ms = s.split('.')
-            else:
-                ms = 0
+            if len(parts) == 3: h, m, s = parts
+            elif len(parts) == 2: h, m, s = 0, parts[0], parts[1]
+            else: h, m, s = 0, 0, parts[0]
+            if '.' in s: s, ms = s.split('.')
+            else: ms = 0
             return int(h)*3600 + int(m)*60 + int(s) + int(ms)/1000.0
         except Exception:
             return 0.0
 
     font_path = os.path.abspath('Roboto-Bold.ttf') 
-    
     word_list = []
+    
     for match in raw_matches:
         c_start = to_sec(match["start"])
         c_end = to_sec(match["end"])
-        
-        if c_end <= c_start:
-            c_end = c_start + 0.5 
+        if c_end <= c_start: c_end = c_start + 0.5 
             
         words = match["text"].split()
         if not words: continue
         
         word_duration = (c_end - c_start) / len(words)
-        
         for idx, word in enumerate(words):
-            w_start = c_start + (idx * word_duration)
-            w_end = w_start + word_duration
-            word_list.append({"word": word, "start": w_start, "end": w_end})
+            word_list.append({
+                "word": word, 
+                "start": c_start + (idx * word_duration), 
+                "end": c_start + ((idx + 1) * word_duration)
+            })
 
     clips = []
     chunk_size = 2 
     
     for i in range(0, len(word_list), chunk_size):
         chunk = word_list[i:i+chunk_size]
-        
-        c_start = chunk[0]["start"]
-        c_end = chunk[-1]["end"]
+        c_start, c_end = chunk[0]["start"], chunk[-1]["end"]
         
         text = " ".join([w["word"] for w in chunk])
-        clean_text = "".join([c for c in text if c.isalnum() or c in ".,!? "]).strip()
-        
+        clean_text = "".join([c for c in text if c.isalnum() or c in ".,!? "]).strip().upper()
         if not clean_text: continue
         
         try:
-            txt_clip = TextClip(
-                txt=clean_text.upper(), 
+            # THE FIX: The Two-Layer Text Trick. 
+            # Layer 1: A massive fat black stroke.
+            txt_bg = TextClip(
+                txt=clean_text, 
                 fontsize=95,
-                color='white',
+                color='black',
                 font=font_path, 
                 stroke_color='black',
-                stroke_width=5,
-                method='caption',
-                align='center',
-                size=(video_w - 100, None)
-            ).set_pos('center').set_start(c_start).set_duration(c_end - c_start)
+                stroke_width=12
+            ).set_pos('center')
             
-            clips.append(txt_clip)
+            # Layer 2: A perfectly crisp white core overlaid on top.
+            txt_fg = TextClip(
+                txt=clean_text, 
+                fontsize=95,
+                color='white',
+                font=font_path
+            ).set_pos('center')
+            
+            # Combine them into a single, gorgeous element
+            combo_clip = CompositeVideoClip([txt_bg, txt_fg], size=txt_bg.size)
+            combo_clip = combo_clip.set_pos('center').set_start(c_start).set_duration(c_end - c_start)
+            
+            clips.append(combo_clip)
         except Exception as e:
             print(f"⚠️ Failed to render caption block '{clean_text}': {e}")
             
-    print(f"✅ Generated {len(clips)} fast-paced 2-word caption clips.")
+    print(f"✅ Generated {len(clips)} perfectly styled caption clips.")
     return clips
 
 # ==========================================
@@ -245,45 +238,39 @@ def edit_video(scenes):
         if img_path:
             img_clip = ImageClip(img_path).set_duration(segment_duration)
             scale = max(W / img_clip.w, half_H / img_clip.h)
-            img_clip = img_clip.resize(scale)
-            img_clip = img_clip.crop(x_center=img_clip.w/2, y_center=img_clip.h/2, width=W, height=half_H)
+            img_clip = img_clip.resize(scale).crop(x_center=img_clip.w/2, y_center=img_clip.h/2, width=W, height=half_H)
         else:
             img_clip = ColorClip(size=(W, half_H), color=(30, 30, 30)).set_duration(segment_duration)
         top_clips.append(img_clip)
         
     top_half = concatenate_videoclips(top_clips).set_pos(("center", "top"))
     
-    video = VideoFileClip("brainrot.mp4", audio=False)
-    scale = max(W / video.w, half_H / video.h)
-    video = video.resize(scale)
-    video = video.crop(x_center=video.w/2, y_center=video.h/2, width=W, height=half_H)
-    
-    safety_buffer = 15
-    max_start_time = video.duration - audio.duration - safety_buffer
-    
-    if max_start_time > 0:
-        random_start = random.uniform(0, max_start_time)
-        bottom_half = video.subclip(random_start, random_start + audio.duration)
-    else:
-        bottom_half = video.subclip(0, video.duration)
-        bottom_half = bottom_half.fx(vfx.loop, duration=audio.duration)
+    # THE FIX: A bulletproof fallback if the downloaded video is ever corrupted
+    try:
+        video = VideoFileClip("brainrot.mp4", audio=False)
+        scale = max(W / video.w, half_H / video.h)
+        video = video.resize(scale).crop(x_center=video.w/2, y_center=video.h/2, width=W, height=half_H)
+        
+        safety_buffer = 15
+        max_start_time = video.duration - audio.duration - safety_buffer
+        
+        if max_start_time > 0:
+            random_start = random.uniform(0, max_start_time)
+            bottom_half = video.subclip(random_start, random_start + audio.duration)
+        else:
+            bottom_half = video.subclip(0, video.duration).fx(vfx.loop, duration=audio.duration)
+    except Exception as e:
+        print(f"⚠️ Dropbox blocked the background video ({e}). Using sleek dark fallback!")
+        bottom_half = ColorClip(size=(W, half_H), color=(20, 20, 20)).set_duration(audio.duration)
 
     bottom_half = bottom_half.set_pos(("center", "bottom"))
     
-    bg_canvas = ColorClip(size=(W, H), color=(0,0,0)).set_duration(audio.duration)
-    bg_canvas = bg_canvas.set_audio(audio)
+    bg_canvas = ColorClip(size=(W, H), color=(0,0,0)).set_duration(audio.duration).set_audio(audio)
     
     caption_clips = get_dynamic_captions("subs.vtt", W, H)
     
     final_video = CompositeVideoClip([bg_canvas, top_half, bottom_half] + caption_clips)
-    
-    final_video.write_videofile(
-        "final_short.mp4", 
-        fps=30, 
-        preset="fast", 
-        threads=4,
-        logger=None
-    )
+    final_video.write_videofile("final_short.mp4", fps=30, preset="fast", threads=4, logger=None)
     
     final_video.close()
     audio.close()
@@ -325,7 +312,6 @@ if __name__ == "__main__":
             
         full_script = " ".join([scene["text"] for scene in content["scenes"]])
         generate_audio_and_subs(full_script)
-        
         edit_video(content["scenes"])
         upload_to_youtube(content["title"], content["description"])
         
@@ -334,8 +320,7 @@ if __name__ == "__main__":
             os.remove("subs.vtt")
             os.remove("brainrot.mp4")
             for i in range(len(content["scenes"])):
-                if os.path.exists(f"scene_{i}.jpg"):
-                    os.remove(f"scene_{i}.jpg")
+                if os.path.exists(f"scene_{i}.jpg"): os.remove(f"scene_{i}.jpg")
         except PermissionError:
             pass
     except Exception as e:
