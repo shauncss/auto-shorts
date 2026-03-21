@@ -236,16 +236,17 @@ def edit_video(scenes):
     for i, scene in enumerate(scenes):
         img_path = f"scene_{i}.jpg" if os.path.exists(f"scene_{i}.jpg") else None
         if img_path:
-            img_clip = ImageClip(img_path).set_duration(segment_duration)
+            # THE FIX: Added .set_fps(30) so MoviePy doesn't render the image invisibly!
+            img_clip = ImageClip(img_path).set_duration(segment_duration).set_fps(30)
             scale = max(W / img_clip.w, half_H / img_clip.h)
             img_clip = img_clip.resize(scale).crop(x_center=img_clip.w/2, y_center=img_clip.h/2, width=W, height=half_H)
         else:
-            img_clip = ColorClip(size=(W, half_H), color=(30, 30, 30)).set_duration(segment_duration)
+            img_clip = ColorClip(size=(W, half_H), color=(30, 30, 30)).set_duration(segment_duration).set_fps(30)
         top_clips.append(img_clip)
         
-    top_half = concatenate_videoclips(top_clips).set_pos(("center", "top"))
+    # THE FIX: Added method="compose" to safely stitch the images without dropping frames
+    top_half = concatenate_videoclips(top_clips, method="compose").set_pos(("center", "top"))
     
-    # THE FIX: A bulletproof fallback if the downloaded video is ever corrupted
     try:
         video = VideoFileClip("brainrot.mp4", audio=False)
         scale = max(W / video.w, half_H / video.h)
@@ -261,11 +262,11 @@ def edit_video(scenes):
             bottom_half = video.subclip(0, video.duration).fx(vfx.loop, duration=audio.duration)
     except Exception as e:
         print(f"⚠️ Dropbox blocked the background video ({e}). Using sleek dark fallback!")
-        bottom_half = ColorClip(size=(W, half_H), color=(20, 20, 20)).set_duration(audio.duration)
+        bottom_half = ColorClip(size=(W, half_H), color=(20, 20, 20)).set_duration(audio.duration).set_fps(30)
 
     bottom_half = bottom_half.set_pos(("center", "bottom"))
     
-    bg_canvas = ColorClip(size=(W, H), color=(0,0,0)).set_duration(audio.duration).set_audio(audio)
+    bg_canvas = ColorClip(size=(W, H), color=(0,0,0)).set_duration(audio.duration).set_audio(audio).set_fps(30)
     
     caption_clips = get_dynamic_captions("subs.vtt", W, H)
     
