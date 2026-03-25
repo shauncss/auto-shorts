@@ -4,6 +4,13 @@ import random
 import subprocess
 import requests
 
+import PIL.Image
+if not hasattr(PIL.Image, 'ANTIALIAS'):
+    try:
+        PIL.Image.ANTIALIAS = PIL.Image.Resampling.LANCZOS
+    except AttributeError:
+        PIL.Image.ANTIALIAS = PIL.Image.LANCZOS
+        
 from google import genai 
 from moviepy.editor import VideoFileClip, AudioFileClip, TextClip, CompositeVideoClip, ColorClip
 import moviepy.video.fx.all as vfx 
