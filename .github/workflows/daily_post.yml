@@ -26,11 +26,9 @@ jobs:
           python-version: '3.12'
 
       - name: Install System Dependencies
-        env:
-          DEBIAN_FRONTEND: noninteractive
         run: |
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends tzdata imagemagick ffmpeg nodejs fonts-dejavu
+          sudo DEBIAN_FRONTEND=noninteractive TZ=Etc/UTC apt-get install -y --no-install-recommends tzdata imagemagick ffmpeg nodejs fonts-dejavu
           sudo rm -f /etc/ImageMagick-6/policy.xml
 
       - name: Download Random Background Video from Dropbox
