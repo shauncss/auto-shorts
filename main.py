@@ -10,19 +10,15 @@ import moviepy.video.fx.all as vfx
 import googleapiclient.discovery
 from google.oauth2.credentials import Credentials
 from googleapiclient.http import MediaFileUpload
-import openai
 
 # ==========================================
 # 1. SETUP & CREDENTIALS
 # ==========================================
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "YOUR_GEMINI_KEY")
 PEXELS_API_KEY = os.environ.get("PEXELS_API_KEY", "").strip()
-OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY", "").strip()
 CUSTOM_IDEA = os.environ.get("CUSTOM_IDEA", "").strip()
 
-gemini_client = genai.Client(api_key=GEMINI_API_KEY)
-if OPENAI_API_KEY:
-    openai_client = openai.OpenAI(api_key=OPENAI_API_KEY)
+client = genai.Client(api_key=GEMINI_API_KEY)
 
 # ==========================================
 # 2. THE BRAIN: GENERATE SCRIPT, THEMES & TAGS
@@ -62,11 +58,10 @@ def generate_content():
         "scenes": [
             {{"text": "Hook text...", "search": "2-3 word visual description (e.g., 'exploding volcano')"}},
             {{"text": "Next text...", "search": "2-3 word visual description (e.g., 'dark forest')"}}
-            // ... 10 to 12 scenes total
         ]
     }}
     """
-    response = gemini_client.models.generate_content(
+    response = client.models.generate_content(
         model='gemini-3-flash-preview',
         contents=prompt
     )
@@ -102,43 +97,77 @@ def fetch_pexels_media(query, index):
     return None
 
 # ==========================================
-# 4. OPENAI TTS & WHISPER TIMESTAMPS
+# 4. THE VOICE & SUBTITLES (FREE EDGE-TTS)
 # ==========================================
 def generate_audio_and_subs(script_text):
-    print("🎙️ Generating hyper-realistic voiceover with OpenAI Onyx...")
-    
-    # Generate the pristine audio
-    response = openai_client.audio.speech.create(
-        model="tts-1",
-        voice="onyx", # Deep, gripping narrator voice
-        input=script_text
-    )
-    response.stream_to_file("voice.mp3")
-    
-    print("📝 Generating perfect word-level timestamp data via Whisper...")
-    # Map the exact millisecond each word is spoken
-    with open("voice.mp3", "rb") as audio_file:
-        transcript = openai_client.audio.transcriptions.create(
-            model="whisper-1",
-            file=audio_file,
-            response_format="verbose_json",
-            timestamp_granularities=["word"]
-        )
-    
-    word_data = [{"word": w.word, "start": w.start, "end": w.end} for w in transcript.words]
-    with open("subs.json", "w", encoding="utf-8") as f:
-        json.dump(word_data, f)
+    print("🎙️ Generating energetic voiceover and sync data with Edge-TTS...")
+    subprocess.run([
+        "edge-tts", 
+        "--voice", "en-US-AndrewNeural", 
+        "--rate", "+10%", 
+        "--text", script_text, 
+        "--write-media", "voice.mp3",
+        "--write-subtitles", "subs.vtt"
+    ])
 
 # ==========================================
-# 5. DYNAMIC CAPTION GENERATOR
+# 5. DYNAMIC CAPTION PARSER (VTT)
 # ==========================================
-def get_dynamic_captions(json_file, video_w, video_h):
-    with open(json_file, 'r', encoding='utf-8') as f:
-        word_list = json.load(f)
+def get_dynamic_captions(vtt_file, video_w, video_h):
+    with open(vtt_file, 'r', encoding='utf-8') as f:
+        lines = f.readlines()
+        
+    raw_matches = []
+    start_t, end_t, text_buffer = None, None, []
+    
+    for line in lines:
+        line = line.strip()
+        if '-->' in line:
+            if start_t and end_t and text_buffer:
+                raw_matches.append({"start": start_t, "end": end_t, "text": " ".join(text_buffer)})
+            parts = line.split('-->')
+            start_t, end_t = parts[0].strip(), parts[1].strip()
+            text_buffer = []
+        elif line and not line.isdigit() and line != "WEBVTT":
+            text_buffer.append(line)
+            
+    if start_t and end_t and text_buffer:
+        raw_matches.append({"start": start_t, "end": end_t, "text": " ".join(text_buffer)})
+
+    def to_sec(t_str):
+        try:
+            t_str = t_str.replace(',', '.')
+            parts = t_str.split(':')
+            if len(parts) == 3: h, m, s = parts
+            elif len(parts) == 2: h, m, s = 0, parts[0], parts[1]
+            else: h, m, s = 0, 0, parts[0]
+            if '.' in s: s, ms = s.split('.')
+            else: ms = 0
+            return int(h)*3600 + int(m)*60 + int(s) + int(ms)/1000.0
+        except Exception:
+            return 0.0
 
     font_path = os.path.abspath('Roboto-Bold.ttf') 
+    word_list = []
+    
+    for match in raw_matches:
+        c_start = to_sec(match["start"])
+        c_end = to_sec(match["end"])
+        if c_end <= c_start: c_end = c_start + 0.5 
+            
+        words = match["text"].split()
+        if not words: continue
+        
+        word_duration = (c_end - c_start) / len(words)
+        for idx, word in enumerate(words):
+            word_list.append({
+                "word": word, 
+                "start": c_start + (idx * word_duration), 
+                "end": c_start + ((idx + 1) * word_duration)
+            })
+
     clips = []
-    chunk_size = 2 # Show 2 words on screen at a time
+    chunk_size = 2 
     
     for i in range(0, len(word_list), chunk_size):
         chunk = word_list[i:i+chunk_size]
@@ -158,7 +187,7 @@ def get_dynamic_captions(json_file, video_w, video_h):
         except Exception:
             pass
             
-    print(f"✅ Generated {len(clips)} perfectly synced caption clips.")
+    print(f"✅ Generated {len(clips)} perfectly styled caption clips.")
     return clips
 
 # ==========================================
@@ -207,7 +236,9 @@ def edit_video(scenes):
 
     bottom_half = bottom_half.set_start(0).set_pos(("center", "bottom"))
     bg_canvas = ColorClip(size=(W, H), color=(0,0,0)).set_duration(audio.duration)
-    caption_clips = get_dynamic_captions("subs.json", W, H)
+    
+    # Restored to use subs.vtt
+    caption_clips = get_dynamic_captions("subs.vtt", W, H)
     
     final_video = CompositeVideoClip([bg_canvas] + top_clips + [bottom_half] + caption_clips)
     final_video = final_video.set_audio(audio)
@@ -232,7 +263,7 @@ def upload_to_youtube(title, description, tags):
                 "categoryId": "22",
                 "title": title[:100], 
                 "description": description,
-                "tags": tags # Using Gemini's generated tags
+                "tags": tags 
             },
             "status": {
                 "privacyStatus": "private", 
@@ -258,7 +289,7 @@ if __name__ == "__main__":
         
         try:
             os.remove("voice.mp3")
-            os.remove("subs.json")
+            os.remove("subs.vtt") # Restored to delete subs.vtt
             os.remove("brainrot.mp4")
             for i in range(len(content["scenes"])):
                 if os.path.exists(f"scene_{i}.mp4"): os.remove(f"scene_{i}.mp4")
